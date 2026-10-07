@@ -43,6 +43,7 @@ with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
             ),
             "JOBFINDER_ENVIRONMENT": "development",
             "JOBFINDER_INTEGRATION_MODE": "mock",
+            "JOBFINDER_SEARCH_MODE": "mock",
             "JOBFINDER_ALLOWED_ORIGINS": '["http://127.0.0.1:5173"]',
             "JOBFINDER_ALLOWED_HOSTS": '["127.0.0.1","localhost"]',
             "JOBFINDER_SECURE_COOKIES": "false",
@@ -59,7 +60,8 @@ with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
     with get_engine().begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE companies, inference_calls, ai_task_revisions, ai_limits, sessions,"
+                "TRUNCATE search_state, companies, inference_calls, ai_task_revisions, "
+                "ai_limits, sessions,"
                 " login_buckets, users, profile_revisions, "
                 "profile_drafts, profiles, documents, operation_intents, procrastinate_jobs CASCADE"
             )

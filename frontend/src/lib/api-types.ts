@@ -143,6 +143,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/companies/{identifier}/discovery/{run_id}/confirm': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Confirm Discovery */
+    post: operations['confirm_discovery_api_v1_companies__identifier__discovery__run_id__confirm_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/jobs': {
     parameters: {
       query?: never;
@@ -801,6 +818,16 @@ export interface components {
       /** Status */
       status: string;
     };
+    /** DiscoveryChoice */
+    DiscoveryChoice: {
+      /** Url */
+      url: string;
+      /**
+       * Confirmed Company
+       * @constant
+       */
+      confirmed_company: true;
+    };
     /** DiscoveryView */
     DiscoveryView: {
       /**
@@ -808,6 +835,8 @@ export interface components {
        * Format: uuid
        */
       id: string;
+      /** Company Revision */
+      company_revision: number;
       /** State */
       state: string;
       /** Cursor */
@@ -1903,6 +1932,44 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['DiscoveryView'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  confirm_discovery_api_v1_companies__identifier__discovery__run_id__confirm_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'If-Match'?: string | null;
+      };
+      path: {
+        identifier: string;
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DiscoveryChoice'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OperationAccepted'];
         };
       };
       /** @description Validation Error */

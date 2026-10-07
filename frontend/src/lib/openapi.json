@@ -598,6 +598,83 @@
         }
       }
     },
+    "/api/v1/companies/{identifier}/discovery/{run_id}/confirm": {
+      "post": {
+        "tags": ["companies"],
+        "summary": "Confirm Discovery",
+        "operationId": "confirm_discovery_api_v1_companies__identifier__discovery__run_id__confirm_post",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identifier"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoveryChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "tags": ["jobs"],
@@ -2342,12 +2419,34 @@
         "required": ["url", "title", "employer", "source_url", "evidence_path", "status"],
         "title": "DiscoveryCandidate"
       },
+      "DiscoveryChoice": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 4096,
+            "title": "Url"
+          },
+          "confirmed_company": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirmed Company"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["url", "confirmed_company"],
+        "title": "DiscoveryChoice"
+      },
       "DiscoveryView": {
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "company_revision": {
+            "type": "integer",
+            "title": "Company Revision"
           },
           "state": {
             "type": "string",
@@ -2390,7 +2489,16 @@
           }
         },
         "type": "object",
-        "required": ["id", "state", "cursor", "issues", "candidates", "started_at", "finished_at"],
+        "required": [
+          "id",
+          "company_revision",
+          "state",
+          "cursor",
+          "issues",
+          "candidates",
+          "started_at",
+          "finished_at"
+        ],
         "title": "DiscoveryView"
       },
       "DocumentPage": {

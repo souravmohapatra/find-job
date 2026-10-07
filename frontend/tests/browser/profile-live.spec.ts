@@ -340,3 +340,47 @@ test('company watch → source controls → all jobs → detail and retained fil
   await expect(page.getByLabel('Search collected jobs')).toHaveValue('Legal');
   expect(new URL(page.url()).searchParams.get('company_id')).toBe(companyId);
 });
+
+test('discovery candidate → explicit company confirmation → persisted website', async ({
+  page,
+}) => {
+  await page.goto('/companies');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByLabel('Company name', { exact: true }).fill('Synthetic Discovery');
+  await page.getByRole('button', { name: 'Follow company' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic Discovery', exact: true }),
+  ).toBeVisible();
+  const companyId = new URL(page.url()).pathname.split('/').at(-1)!;
+  execFileSync('../backend/.venv/bin/python', ['../scripts/seed-browser-discovery.py', companyId]);
+  await page.reload();
+  await page.getByRole('radio', { name: 'Use this page for Synthetic Discovery' }).check();
+  await expect(page.getByRole('button', { name: 'Confirm company page' })).toBeDisabled();
+  await page.getByLabel('I checked that the selected page belongs to Synthetic Discovery').check();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/discovery-${width}.png`, fullPage: true });
+  }
+  await page.getByRole('button', { name: 'Confirm company page' }).click();
+  await expect(
+    page.getByText('Company page confirmed. A new source check is queued.'),
+  ).toBeVisible();
+  await page.getByText('Edit company watch', { exact: true }).click();
+  await expect(page.getByLabel('Website or careers URL', { exact: true })).toHaveValue(
+    'https://example.com/careers',
+  );
+  await page.reload();
+  await page.getByText('Edit company watch', { exact: true }).click();
+  await expect(page.getByLabel('Website or careers URL', { exact: true })).toHaveValue(
+    'https://example.com/careers',
+  );
+  await expect(
+    page.getByRole('radio', { name: 'Use this page for Synthetic Discovery' }),
+  ).toHaveCount(0);
+});

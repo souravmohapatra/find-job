@@ -7,6 +7,7 @@ from app.api.inventory_contracts import (
     CompanyInput,
     CompanyPage,
     CompanyView,
+    DiscoveryChoice,
     DiscoveryView,
     RunView,
     SourceEdit,
@@ -15,6 +16,7 @@ from app.api.inventory_contracts import (
 )
 from app.auth import DB, Auth
 from app.collection.ats import request_url
+from app.collection.contracts import public_link
 from app.collection.inventory import key
 from app.collection.models import CollectionRun, Company, DiscoveryRun, Source
 from app.errors import problem
@@ -223,3 +225,44 @@ def discovery_history(
             .limit(20)
         )
     )
+
+
+@router.post(
+    "/companies/{identifier}/discovery/{run_id}/confirm",
+    response_model=OperationAccepted,
+    status_code=202,
+)
+def confirm_discovery(
+    identifier: UUID,
+    run_id: UUID,
+    body: DiscoveryChoice,
+    session: Auth,
+    db: DB,
+    expected: Expected = None,
+) -> dict[str, str]:
+    company = company_row(db, identifier, lock=True)
+    revision_check(expected, company.revision)
+    run = db.get(DiscoveryRun, run_id)
+    if run is None or run.company_id != company.id:
+        raise problem(404, "discovery_not_found", "This discovery run could not be found.")
+    if company.paused or run.company_revision != company.revision:
+        raise problem(409, "discovery_changed", "Refresh discovery before confirming this company.")
+    if not any(
+        candidate.get("url") == body.url and candidate.get("status") == "needs_identity_review"
+        for candidate in run.candidates
+    ):
+        raise problem(422, "invalid_candidate", "Choose a company page from these search results.")
+    company.website = public_link(body.url)
+    company.revision += 1
+    company.resolution = "unresolved"
+    company.discovery_due_at = now()
+    company.evidence = {
+        **company.evidence,
+        "owner_selected_candidate": body.url,
+        "owner_selected_run_id": str(run.id),
+    }
+    operation = create_operation(
+        db, "company_discover", str(uuid4()), {"company_id": str(company.id)}
+    )
+    db.commit()
+    return operation_response(operation, company.id)

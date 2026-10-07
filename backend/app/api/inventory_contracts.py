@@ -118,9 +118,15 @@ class DiscoveryCandidate(BaseModel):
 class DiscoveryView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+    company_revision: int
     state: str
     cursor: int
     issues: list[str]
     candidates: list[DiscoveryCandidate]
     started_at: datetime
     finished_at: datetime | None
+
+
+class DiscoveryChoice(Input):
+    url: str = Field(max_length=4096)
+    confirmed_company: Literal[True]

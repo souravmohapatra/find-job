@@ -13,6 +13,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 
+@pytest.fixture(autouse=True)
+def mock_search(monkeypatch):
+    from app.collection import search
+
+    monkeypatch.setattr(search, "search", lambda run_id, slot, query: [])
+
+
 def watch(website: str | None = "https://example.com") -> tuple[UUID, UUID]:
     with Session(get_engine()) as db, db.begin():
         company = Company(label="Example", website=website)
@@ -118,10 +125,10 @@ def test_ats_identity_uses_exact_hosts(
 def test_no_website_remains_visible_without_synthetic_jobs() -> None:
     company_id, root = watch(None)
     process_operation(root)
+    drain()
     with Session(get_engine()) as db:
         company = db.get(Company, company_id)
-        assert company.resolution == "needs_website"
-        assert company.evidence["discovery_issue"] == "search_discovery_pending"
+        assert company.resolution == "unresolved"
         assert company.discovery_due_at > now()
         assert db.scalar(select(func.count()).select_from(Source)) == 0
 
@@ -144,7 +151,7 @@ def test_page_failure_preserves_other_paths_and_invalid_ats_is_not_verified(
     drain()
     with Session(get_engine()) as db:
         run = db.scalar(select(DiscoveryRun))
-        assert run.state == "partial" and run.cursor == 3
+        assert run.state == "partial" and run.cursor == 4
         assert "robots_denied" in run.issues and "ats_response_unverified" in run.issues
         assert db.scalar(select(func.count()).select_from(Source)) == 0
 
@@ -206,7 +213,7 @@ def test_unknown_redirect_caps_and_generic_candidates_are_not_verified_jobs(
     drain()
     with Session(get_engine()) as db:
         run = db.scalar(select(DiscoveryRun))
-        assert run.cursor == 20 and len(run.frontier) == 20
+        assert run.cursor == 21 and len(run.frontier) == 21
         assert "discovery_page_limit" in run.issues and "unverified_redirect" in run.issues
         assert run.candidates and "generic_collection_pending" in run.issues
         assert db.scalar(select(Source)) is None
@@ -221,9 +228,8 @@ def test_interrupted_final_step_is_reconciled_and_expired_epoch_is_replaced() ->
         operation = db.get(Operation, next_step())
         operation.state = "failed"
         db.flush()
-        assert begin(db, company) is None
-        assert run.state == "partial" and "discovery_step_interrupted" in run.issues
         assert begin(db, company) is not None
+        assert run.state == "running" and "discovery_step_interrupted" in run.issues
     with Session(get_engine()) as db, db.begin():
         active = db.scalar(select(DiscoveryRun).where(DiscoveryRun.state == "running"))
         active.started_at = now() - timedelta(hours=25)
@@ -248,7 +254,7 @@ def test_discovery_history_is_authenticated_and_does_not_expose_fetch_frontier(c
     history = client.get(endpoint)
     assert history.status_code == 200
     assert history.json()[0]["state"] == "complete"
-    assert history.json()[0]["cursor"] == 1
+    assert history.json()[0]["cursor"] == 2
     assert "frontier" not in history.json()[0]
     assert client.get(endpoint + "?offset=20").json() == []
     assert client.get(f"/api/v1/companies/{uuid4()}/discovery").status_code == 404

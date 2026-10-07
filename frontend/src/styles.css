@@ -943,3 +943,11 @@ details[open] > summary {
 .inventory-form > .button {
   justify-self: start;
 }
+
+.discovery-candidate {
+  border-top: 1px solid var(--border);
+  padding-block: 1rem;
+}
+.discovery-url {
+  overflow-wrap: anywhere;
+}

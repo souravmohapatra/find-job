@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     secure_cookies: bool = True
     session_days: int = 7
     openrouter_key_file: Path = Path("/run/secrets/openrouter_api_key")
+    search_mode: Literal["mock", "live"] = "mock"
+    brave_key_file: Path = Path("/run/secrets/brave_api_key")
+    search_daily_limit: int = Field(default=300, ge=1, le=10000)
+    search_monthly_limit: int = Field(default=1000, ge=1, le=100000)
     fetcher_url: str | None = None
     fetcher_token_file: Path = Path("/run/secrets/fetcher_token")
     document_dir: Path = Path("/data/documents")

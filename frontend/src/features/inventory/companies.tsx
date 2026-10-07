@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { request } from '../../lib/api';
 import { Failure, OperationStatus } from './shared';
+import { DiscoveryHistory } from './discovery';
 import { date, read, useCsrf, type Schemas } from './data';
 
 export function CompaniesPage() {
@@ -94,7 +95,9 @@ export function CompaniesPage() {
                   {company.paused ? 'Paused' : `Every ${company.interval_hours} hours`} ·{' '}
                   {company.resolution === 'unresolved'
                     ? 'Source discovery unresolved'
-                    : company.resolution}
+                    : company.resolution === 'needs_review'
+                      ? 'Company identity needs review'
+                      : company.resolution.replaceAll('_', ' ')}
                 </p>
               </div>
               <Link to={`/jobs?view=all&company_id=${company.id}`}>All collected jobs</Link>
@@ -146,11 +149,25 @@ function Interval({
 function CompanyEditor({ company }: { company: Schemas['CompanyView'] }) {
   const csrf = useCsrf();
   const client = useQueryClient();
-  const [base, setBase] = useState(company.revision);
-  const [label, setLabel] = useState(company.label);
-  const [website, setWebsite] = useState(company.website ?? '');
-  const [interval, setInterval] = useState(company.interval_hours ?? 24);
-  const [paused, setPaused] = useState(company.paused ?? false);
+  const [draft, setDraft] = useState<{
+    base: number;
+    label: string;
+    website: string;
+    interval: number;
+    paused: boolean;
+  } | null>(null);
+  const current = draft ?? {
+    base: company.revision,
+    label: company.label,
+    website: company.website ?? '',
+    interval: company.interval_hours ?? 24,
+    paused: company.paused ?? false,
+  };
+  const { base, label, website, interval, paused } = current;
+  const setLabel = (value: string) => setDraft({ ...current, label: value });
+  const setWebsite = (value: string) => setDraft({ ...current, website: value });
+  const setInterval = (value: number) => setDraft({ ...current, interval: value });
+  const setPaused = (value: boolean) => setDraft({ ...current, paused: value });
   const save = useMutation({
     mutationFn: () =>
       request(
@@ -168,7 +185,8 @@ function CompanyEditor({ company }: { company: Schemas['CompanyView'] }) {
         csrf,
       ),
     onSuccess: async (data) => {
-      setBase((data as Schemas['CompanyView']).revision);
+      client.setQueryData(['company', company.id], data);
+      setDraft(null);
       await client.invalidateQueries({ queryKey: ['company', company.id] });
       await client.invalidateQueries({ queryKey: ['companies'] });
       await client.invalidateQueries({ queryKey: ['sources', company.id] });
@@ -312,6 +330,7 @@ export function CompanyPage() {
   const company = useQuery({
     queryKey: ['company', id],
     queryFn: () => read<Schemas['CompanyView']>(`/companies/${id}`),
+    refetchInterval: 5000,
   });
   const sources = useQuery({
     queryKey: ['sources', id],
@@ -405,11 +424,12 @@ export function CompanyPage() {
           <SourceCard key={source.id} source={source} />
         ))}
       </section>
+      <DiscoveryHistory company={company.data} onOperation={setOperation} />
       <section className="panel">
         <h2>Add a known job board</h2>
         <p>
-          Automatic discovery is still being built. You can save a known Greenhouse, Lever or Ashby
-          board now; job collection is not ready in this development build.
+          Add a Greenhouse, Lever or Ashby board you have checked yourself. Its first successful
+          collection will establish the available listings.
         </p>
         <form
           className="inventory-form"

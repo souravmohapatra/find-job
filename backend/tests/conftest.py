@@ -38,10 +38,12 @@ def migrate() -> Generator[None, None, None]:
 def clean_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "document_dir", tmp_path / "documents")
     monkeypatch.setattr(get_settings(), "integration_mode", "mock")
+    monkeypatch.setattr(get_settings(), "search_mode", "mock")
     with get_engine().begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE companies, inference_calls, ai_task_revisions, ai_limits, sessions,"
+                "TRUNCATE search_state, companies, inference_calls, ai_task_revisions, "
+                "ai_limits, sessions,"
                 " login_buckets, users, profile_revisions, profile_drafts, "
                 "profiles, documents, operation_intents, procrastinate_jobs CASCADE"
             )

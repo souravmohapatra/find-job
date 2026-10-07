@@ -150,3 +150,26 @@ class DiscoveryRun(Base):
     candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SearchRequest(Base):
+    __tablename__ = "search_requests"
+    __table_args__ = (
+        UniqueConstraint("run_id", "slot", name="uq_search_run_slot"),
+        Index("ix_search_requested_at", "requested_at"),
+        CheckConstraint("slot BETWEEN 0 AND 2", name="search_slot"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("discovery_runs.id"))
+    slot: Mapped[int]
+    query: Mapped[str] = mapped_column(String(1000))
+    state: Mapped[str] = mapped_column(String(20), default="reserved")
+    results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SearchState(Base):
+    __tablename__ = "search_state"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    next_allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

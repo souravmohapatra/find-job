@@ -30,6 +30,8 @@ class Target(BaseModel):
     adapter: Adapter | None = None
     board: str | None = None
     region: str = "global"
+    query: str | None = None
+    search_slot: int = 0
 
 
 class DiscoveryResult(BaseModel):
@@ -66,6 +68,11 @@ def target(url: str, *, depth: int = 0, linked_from: str | None = None) -> Targe
             linked_from=linked_from,
         )
     return Target(url=url, depth=depth, linked_from=linked_from)
+
+
+def search_target(company_name: str) -> Target:
+    name = " ".join(re.sub(r"[^\w\s.-]", " ", company_name).split())
+    return Target(url="", query=f'"{name}" careers jobs', search_slot=0)
 
 
 def same_site(url: str, website: str) -> bool:
@@ -108,14 +115,11 @@ def begin(db: Session, company: Company) -> Operation | None:
         active.state = "expired"
         active.finished_at = now()
     company.discovery_due_at = now() + timedelta(days=1)
-    if not company.website:
-        company.resolution = "needs_website"
-        company.evidence = {**company.evidence, "discovery_issue": "search_discovery_pending"}
-        return None
+    initial = target(company.website) if company.website else search_target(company.label)
     run = DiscoveryRun(
         company_id=company.id,
         company_revision=company.revision,
-        frontier=[target(company.website).model_dump()],
+        frontier=[initial.model_dump()],
     )
     db.add(run)
     db.flush()
@@ -149,6 +153,13 @@ def prepare(run_id: UUID, cursor: int) -> DiscoveryResult:
             raise OperationError("discovery_superseded", "This discovery run is no longer current.")
         item = Target.model_validate(run.frontier[cursor])
         website = company.website
+    if item.query is not None:
+        from app.collection.search import search
+
+        candidates = search(run_id, item.search_slot, item.query)
+        return DiscoveryResult(
+            candidates=candidates, issues=["search_candidates_unverified"] if candidates else []
+        )
     assert website is not None
     if item.adapter and item.board:
         decoded = decode_page(item.adapter, fetch_json(item.url))
@@ -272,9 +283,21 @@ def apply(db: Session, run_id: UUID, cursor: int, result: DiscoveryResult) -> No
     has_source = (
         db.scalar(select(Source.id).where(Source.company_id == company.id).limit(1)) is not None
     )
+    if not has_source and not any(entry.get("query") for entry in frontier):
+        run.frontier = [*frontier, search_target(company.label).model_dump()]
+        step_operation(db, run)
+        return
     run.state = "partial" if issues else "complete"
     run.finished_at = now()
-    company.resolution = "sources_found" if has_source else "unresolved"
+    company.resolution = (
+        "sources_found"
+        if has_source
+        else (
+            "needs_review"
+            if any(entry.get("status") == "needs_identity_review" for entry in run.candidates)
+            else "unresolved"
+        )
+    )
     company.evidence = {
         **company.evidence,
         "discovery_run_id": str(run.id),
