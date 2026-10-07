@@ -1,0 +1,60 @@
+# Decision register
+
+Updated: 2026-10-07. User requirements and delegated implementation decisions are distinguished below. Selected defaults can be revised with evidence; they are not claims of user approval of every detail or of runtime validation.
+
+## Confirmed user requirements
+
+| ID | Decision |
+| --- | --- |
+| D01 | Personal project; no employer-internal systems or trackers. |
+| D02 | Docker Compose on Ubuntu Server, LAN and local tailnet access, no public access. Supersedes “hosting details later.” |
+| D03 | Web portal and locally hosted ntfy. |
+| D04 | One active CV-derived profile, editable by the user. |
+| D05 | Domain-agnostic analysis and logic; consulting/finance/entertainment are example context only. |
+| D06 | Optional diversification beyond existing professional domains. |
+| D07 | Persist company requests; daily/custom checks, including companies without careers pages. |
+| D08 | AI assesses collected jobs against saved profile/preferences. |
+| D09 | All collected company jobs remain available regardless of matching. |
+| D10 | Polished, minimalist UX. |
+| D11 | Decide and document implementation details now. Supersedes the earlier high-level-only constraint; implementation itself is not requested yet. |
+| D12 | Local Git autonomy while preserving user work; no remote publication authorized. |
+| D13 | OpenRouter API for all LLM work, independent models per task; exact models decided later. No local LLM. |
+| D14 | Broad manual-review shortlist at roughly 30% relevance; exclude unrelated primary functions, do not optimize strict matching. |
+| D15 | Configurable daily summary, default 19:00 in the owner's timezone; daily/twice-daily checks are independent. |
+| D16 | Netflix, Spotify, Amazon, Revolut, Airwallex and similar employers are development-only examples, not product presets. |
+
+## Selected implementation decisions
+
+| ID | Choice and rationale | Detail |
+| --- | --- | --- |
+| T01 | Build focused app using libraries; avoid inheriting broader platform scope. | IMPLEMENTATION.md, RESEARCH.md |
+| T02 | React/TypeScript/Vite, Tailwind/shadcn; FastAPI/Pydantic Python backend. | IMPLEMENTATION.md, UI_UX.md |
+| T03 | PostgreSQL, SQLAlchemy/Alembic, Procrastinate; durable jobs without Redis. | IMPLEMENTATION.md, DATA_MODEL.md |
+| T04 | Immutable profile/job revisions and versioned assessments; collection independent of suitability. | DATA_MODEL.md |
+| T05 | OpenRouter integration with versioned per-task model mappings, capability validation and bounded spend. Supersedes the initial local-inference proposal under D13; no model IDs selected. | MATCHING.md |
+| T06 | Broad 30/100 heuristic inclusion with primary-function boundary; both match/possible entries shortlisted. Supersedes stricter fit rules and precision targets. | MATCHING.md |
+| T07 | Domain focus/expand/open; open default with explicit setup review. | MATCHING.md |
+| T08 | ATS APIs first, generic HTTP/browser fallback, Brave company discovery; no logged-in scraping. | SOURCES.md |
+| T09 | One owner account, private sessions, isolated fetching, mounted secret files. | DEPLOYMENT.md |
+| T10 | Caddy LAN HTTPS and host Tailscale Serve; no wildcard public publishing or Funnel. | DEPLOYMENT.md |
+| T11 | Daily 19:00 local digest includes both shortlist categories; separately label baselines/reassessments, handle late assessments and DST. Supersedes the 15-minute, matches-only default. | DEPLOYMENT.md, MATCHING.md |
+| T12 | Jobs/Companies/Profile plus secondary Settings; all-jobs and explanation views. | UI_UX.md |
+| T13 | PDF text/DOCX/TXT, explicit review, no OCR in v1; replacement CV uses a merge draft. | MATCHING.md |
+| T14 | Conservative identity/closure rules; partial runs never close missing jobs. | DATA_MODEL.md, SOURCES.md |
+| T15 | Local notifications by default; external iOS wake-up/Web Push disabled. | DEPLOYMENT.md |
+| T16 | Nightly private backups with restore drill; 30-day operational retention, seven-day fetch diagnostics. | DATA_MODEL.md, DEPLOYMENT.md |
+
+## Alternatives considered
+
+- Full platform fork: more existing functionality, but broader scope and licence obligations; no fork selected.
+- SQLite plus an in-process scheduler: smaller service count, but weaker fit for multiple durable workers and concurrent state transitions.
+- Celery/Redis: viable, but another stateful service is unnecessary for this scale.
+- Local inference: superseded by the user's explicit OpenRouter requirement. No local model infrastructure is planned.
+- General browsing agent: flexible, but controlled adapters and bounded extraction are easier to validate.
+- Multi-profile or application tracker: useful future scope, unnecessary for the first requested journey.
+
+## Inputs and evidence still needed
+
+Exact per-task OpenRouter model IDs remain intentionally deferred. Actual deployment addresses, tailnet policy, owner credentials, OpenRouter key, Brave key if automatic discovery is wanted, and backup location remain to be supplied. Pin compatible dependencies during implementation and record task configuration/model provenance for each call. Model quality and performance, generic-site coverage, client certificate trust and notification behaviour require execution evidence. They have not been tested.
+
+Future scope includes additional ATS adapters, OCR, automatic company suggestions and multiple profiles. These are extensions, not blockers for the selected initial design.

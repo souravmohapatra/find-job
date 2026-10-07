@@ -1,0 +1,71 @@
+# Deployment and operations
+
+Target: Ubuntu Server with Docker Engine and Docker Compose v2, reachable over the local network and local tailnet only. No public ingress, public DNS setup, router forwarding, Tailscale Funnel, or hosted application service is part of this design. Outbound access is needed for public job sites, search, OpenRouter inference, updates, and normal Tailscale connectivity.
+
+## Compose topology
+
+| Service | Role | Persistent data |
+| --- | --- | --- |
+| edge | Caddy serving built frontend and proxying API/ntfy | Local certificate authority and Caddy state |
+| api | FastAPI, owner authentication, job/profile APIs | Private document volume; PostgreSQL |
+| worker | Procrastinate control/fetch/notify queues | Document volume; PostgreSQL |
+| ai-worker | Procrastinate AI queue | Document volume; PostgreSQL |
+| db | PostgreSQL 17 | Database volume |
+| fetcher | HTTPX/Playwright service for public pages | None; bounded temporary files |
+| egress-proxy | Squid destination filtering for fetcher | No application data |
+| ntfy | Private notification server | Auth and message-cache volume |
+| migrate | One-shot application and queue migrations | Database |
+
+Use one backend image with separate process commands; fetcher has a browser-enabled image; frontend assets are built into edge with a multi-stage build. Host Tailscale is managed as a normal host service, keeping its privileges out of app containers. There is no local LLM container, model volume, or GPU requirement. AI workers call OpenRouter over outbound HTTPS. An existing local ntfy instance can replace the bundled service through deployment configuration.
+
+Services restart unless stopped, run as non-root where supported, have bounded log rotation, and expose no Docker socket. PostgreSQL, fetcher and backend ports are never published to LAN/tailnet. Health checks and dependency ordering do not replace retry/recovery logic. Migration runs once before starting application workers; it is not launched independently by every replica.
+
+Core, notification, fetch and outbound networks have explicit membership. Only fetcher and proxy share the fetch network; fetcher cannot join core. Proxy is its only outbound path. Worker reaches the fetcher API through a dedicated internal fetch-control network with stateful firewall rules permitting worker-initiated API calls and their responses only; fetcher-initiated connections back to worker addresses are denied. The worker exposes no listener on this network. Verify these rules, including same-bridge traffic, rather than relying on network naming as isolation. Do not accidentally give the fetcher unrestricted core access while wiring control traffic. Arbitrary internet traffic is prohibited from reaching private ranges as described in SOURCES.md.
+
+## LAN and tailnet entry points
+
+Choose two browser origins: app on HTTPS 443; ntfy on HTTPS 8443. LAN hostname example is `jobs.home.arpa`, resolved to the Ubuntu server by local DNS. Actual names/IPs are installation parameters.
+
+Caddy listens for LAN HTTPS on ports bound explicitly to `LAN_IP:443` and `LAN_IP:8443`. It also exposes app and ntfy HTTP listeners on host loopback only at `127.0.0.1:8080` and `127.0.0.1:8081`. Host Tailscale Serve proxies tailnet HTTPS 443 to loopback 8080 and HTTPS 8443 to loopback 8081. Use the device's full tailnet DNS name. No listener binds to all host interfaces; IPv6 stays unpublished until equivalent restrictions are configured.
+
+LAN Caddy sites use `tls internal`, requiring the generated CA root to be trusted on each LAN client. Tailnet clients use Tailscale Serve certificates. Store Caddy CA keys privately and back them up. Explicitly list app LAN/tailnet origins and trusted proxy paths; trust forwarded headers only from known proxy hops. Hostnames do not determine authorization. [Caddy local HTTPS](https://caddyserver.com/docs/automatic-https), [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
+
+Set the canonical app notification link and ntfy base URL to the tailnet origins for off-LAN use. LAN aliases are additional allowed origins with independent browser sessions. A mobile client must have tailnet connectivity away from home; LAN-only users can choose LAN URLs instead.
+
+Bind published ports explicitly and apply Docker-aware ingress rules permitting only intended LAN and tailnet access. Verify from both allowed and disallowed networks. Do not assume UFW alone filters Docker-published ports; Docker documents that they can bypass its rules. [Docker firewall behaviour](https://docs.docker.com/engine/network/packet-filtering-firewalls/). Do not enable Funnel; it provides public access rather than tailnet-only serving. [Funnel distinction](https://tailscale.com/docs/features/tailscale-funnel).
+
+## Authentication and secrets
+
+One owner account, created by a local bootstrap CLI with an interactive password. No public registration and no first-visitor takeover flow. Use Argon2id password hashing, random opaque sessions stored hashed in PostgreSQL, Secure/HttpOnly/SameSite=Lax cookies, seven-day absolute expiry, logout revocation, CSRF tokens and Origin checks for mutations. Rate-limit login attempts in the database; allow password managers and paste. Credentials remain necessary on the trusted LAN.
+
+Mount deployment secrets as files through Compose secrets: DB password, OpenRouter API key, ntfy publisher token, optional Brave API key, and internal service credentials. Local Compose secret files still need restricted host permissions; they are not an encrypted secret vault. Credentials are never stored in frontend state or returned by settings APIs. Fix the OpenRouter API base URL in deployment configuration; expose task model IDs, routing and budgets as non-secret Settings. Mount the OpenRouter key only into backend processes that need catalog validation or inference. Approved internal ntfy and external OpenRouter traffic are separate from arbitrary source URLs, and credentials must never follow redirects to a different origin.
+
+Keep CVs/private documents off the static web root. Only authenticated download handlers may return them. Job content renders as plain text/structured sections, with safe external links. No third-party analytics or external fonts are loaded by the web client.
+
+## ntfy policy
+
+Set auth default access to deny-all. Give the app a publish-only token for its topic and the owner a read credential. Persist auth and a seven-day cache; disable public signup and attachments. Caddy supports streaming subscription responses without buffering/timeouts that cut off active streams. [ntfy configuration](https://docs.ntfy.sh/config/).
+
+Default notification mode: one daily digest at 19:00 in a configurable IANA timezone, including all newly shortlisted match and possible_match entries. Setup proposes Europe/London from the current project context and lets the owner change it; never infer timezone from the Ubuntu host. Notification time and collection interval are independent. Daily and twice-daily collection presets are available.
+
+At the scheduled cutoff, snapshot eligible unconsumed events and recheck current availability/assessment/profile versions. Summarize counts by company, up to ten example titles and a link to the full shortlist. Omitted titles are still part of the digest snapshot. Include pending/failed checks separately, so a failure is not reported as zero jobs. Send a concise zero-new-roles summary by default; make empty summaries configurable. Baseline inventories and reassessment results are separately labelled counts/links at this same scheduled time, never immediate floods or misleading new-job alerts.
+
+Events assessed after the cutoff enter the next digest even if the job was discovered earlier. Use durable event membership and a unique owner/local-date digest key, not a sliding last-24-hours query. Once sent, strong-to-possible or possible-to-strong changes do not notify again. If the server is offline at the slot, carry unsummarized events into the next scheduled digest; do not send off-schedule catch-up summaries. Brief transport retries remain attached to the same snapshot, for at most 30 minutes after its slot. Pending, failed or unknown deliveries stay visible; carry definitely unsent events forward, but do not automatically duplicate events in an ambiguous delivery.
+
+Compute each next slot from local calendar date/time using zoneinfo and persist its UTC instant. Keep 19:00 local through daylight-saving changes. For a configurable time that does not exist on a spring-forward day, use the first valid instant after it; for a repeated time, use the first occurrence. Emit at most one scheduled digest per local date, including after schedule edits/restarts. Collectors never publish directly; the ledger separates collection, eligibility, digest membership and delivery.
+
+Guarantee one local event per eligibility key, not exactly-once external push delivery. Retry clearly unsent transient failures. Persist `sending` before the network request. A timeout/crash after a request may have reached ntfy leaves delivery `unknown`; require an explicit resend rather than automatically flooding the topic. The publish-only app credential cannot read the server cache, so v1 does not attempt automatic reconciliation. Recovery converts abandoned `sending` records to `unknown`; the UI explains that a manual resend might duplicate a message. A successful publish records ntfy's returned ID; it proves server acceptance, not that a phone displayed it.
+
+Disable external iOS wake-up forwarding and browser Web Push by default. Foreground browser subscriptions and supported native clients work while connected, but instant iOS background delivery must not be promised. Enabling ntfy's iOS upstream later sends wake-up metadata through an external relay while job contents remain on the local server; this is an explicit owner setting and still requires device access to the private server. [ntfy iOS behaviour](https://docs.ntfy.sh/config/#ios-instant-notifications).
+
+## Resources, backups, and recovery
+
+Initial application sizing estimate: two to four CPU cores, 4–8 GiB RAM and 20 GiB free disk, with extra space for inventory and backups. No model weights or GPU memory are needed. This is an unmeasured starting point; measure browser memory, database growth, concurrent work and API latency. Model choice affects API cost/quality rather than local inference hardware.
+
+Store data in named volumes or an explicitly configured private host data directory. Nightly backups stop mutation-producing services briefly, dump PostgreSQL, and copy documents, ntfy state, and Caddy state as a consistent set; restart services even if backup fails. Keep API keys in separately protected secret backups. Retain seven daily and four weekly encrypted backups on a separate disk/location, with host permissions protecting encryption keys. Test restoration into isolated volumes with scheduling and external notifications disabled before enabling them. Target recovery point 24 hours and recovery time two hours, subject to an actual drill.
+
+Expose DB/migration readiness separately from degraded AI/search/notification status. Log structured operation/source IDs and sanitized errors, never CV text or credentials. Show last successful check, queue age and dependency state in Settings. No monitoring SaaS is required.
+
+## Installation parameters still needed
+
+Actual LAN IP/subnet and local DNS record; tailnet device name/access policy; owner credentials; OpenRouter key and task model IDs (models intentionally chosen later); optional Brave subscription/key; backup destination. Addresses and secrets are deployment values; model choice is the user-requested remaining design selection. No services are installed or running as a result of this document.
