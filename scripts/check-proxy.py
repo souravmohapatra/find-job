@@ -1,10 +1,11 @@
 """Check cached Squid ACLs in a disposable network-none container; no image pull."""
 
-import json
 import subprocess
 import time
 from pathlib import Path
 from uuid import uuid4
+
+from deployment_config import configuration
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,18 +17,7 @@ def docker(*args: str, data: str | None = None) -> str:
 
 
 def main() -> None:
-    config = json.loads(
-        docker(
-            "compose",
-            "-f",
-            str(ROOT / "compose.yaml"),
-            "-f",
-            str(ROOT / "compose.fetch.yaml"),
-            "config",
-            "--format",
-            "json",
-        )
-    )
+    config = configuration()
     image = config["services"]["egress-proxy"]["image"]
     name = "jobfinder-acl-check-" + uuid4().hex[:12]
     started = False

@@ -1,0 +1,16 @@
+# Private service; public base URL is supplied by Compose.
+listen-http: ':8080'
+cache-file: /var/lib/ntfy/cache.db
+cache-duration: 168h
+auth-file: /var/lib/ntfy/auth.db
+auth-default-access: deny-all
+enable-login: true
+enable-signup: false
+enable-reservations: false
+attachment-cache-dir: ''
+upstream-base-url: ''
+web-push-public-key: ''
+web-push-private-key: ''
+# Do not trust arbitrary forwarded client addresses for rate limiting.
+behind-proxy: false
+log-level: info

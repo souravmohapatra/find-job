@@ -1,20 +1,39 @@
 name: jobfinder
+x-runtime: &runtime
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: {max-size: '10m', max-file: '3'}
 x-backend: &backend
+  <<: *runtime
+  image: jobfinder-backend:local
   build:
     context: .
     dockerfile: deploy/backend.Dockerfile
   environment: &backend-env
     JOBFINDER_ENVIRONMENT: production
-    JOBFINDER_INTEGRATION_MODE: mock
-    JOBFINDER_ALLOWED_ORIGINS: '["https://localhost:8443"]'
-    JOBFINDER_ALLOWED_HOSTS: '["localhost","127.0.0.1","api"]'
+    JOBFINDER_INTEGRATION_MODE: ${INTEGRATION_MODE:-mock}
+    JOBFINDER_SEARCH_MODE: ${SEARCH_MODE:-mock}
+    JOBFINDER_NOTIFICATION_MODE: ${NOTIFICATION_MODE:-mock}
+    JOBFINDER_ALLOWED_ORIGINS: '["https://${LAN_HOST:?Set LAN_HOST}","https://${TAILNET_HOST:?Set TAILNET_HOST}"]'
+    JOBFINDER_ALLOWED_HOSTS: '["${LAN_HOST}","${TAILNET_HOST}","localhost","api"]'
+    JOBFINDER_NTFY_URL: http://ntfy:8080
+    JOBFINDER_NTFY_TOPIC: ${NTFY_TOPIC:-jobfinder}
+    JOBFINDER_NOTIFICATION_APP_URL: https://${TAILNET_HOST}
   secrets: [db_password]
   networks: [core]
   volumes: [documents:/data/documents]
-  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs: [/tmp:size=128m,mode=1777]
+  init: true
+  stop_grace_period: 45s
+  pids_limit: 256
 services:
   db:
-    image: postgres:17-alpine
+    <<: *runtime
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:
       POSTGRES_DB: jobfinder
       POSTGRES_USER: jobfinder
@@ -24,43 +43,169 @@ services:
     networks: [core]
     healthcheck:
       test: [CMD-SHELL, 'pg_isready -U jobfinder -d jobfinder']
-      interval: 3s
+      interval: 5s
       timeout: 3s
       retries: 20
-    restart: unless-stopped
   migrate:
     <<: *backend
     command: [alembic, upgrade, head]
+    restart: 'no'
+    volumes: []
     depends_on:
       db: {condition: service_healthy}
-  api:
+  queue-bootstrap:
     <<: *backend
+    command: [python, -m, app.tasks, --bootstrap]
+    restart: 'no'
+    volumes: []
     depends_on:
       migrate: {condition: service_completed_successfully}
+  api:
+    <<: *backend
+    secrets: [db_password, openrouter_api_key]
+    networks: [core, provider_outbound]
+    mem_limit: 768m
+    depends_on:
+      queue-bootstrap: {condition: service_completed_successfully}
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live')"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  worker:
+    <<: *backend
+    command: [python, -m, app.tasks, --queues, 'control,fetch,notify', --concurrency, '4']
+    environment:
+      <<: *backend-env
+      JOBFINDER_FETCHER_URL: http://fetcher:8001
+    secrets: [db_password, fetcher_token, brave_api_key, ntfy_publisher_token]
+    networks: [core, fetch_control, notification, provider_outbound]
+    mem_limit: 1g
+    depends_on:
+      queue-bootstrap: {condition: service_completed_successfully}
+      fetcher: {condition: service_healthy}
+      ntfy: {condition: service_healthy}
+  ai-worker:
+    <<: *backend
+    command: [python, -m, app.tasks, --queues, ai, --concurrency, '2']
+    secrets: [db_password, openrouter_api_key]
+    networks: [core, provider_outbound]
+    mem_limit: 1g
+    depends_on:
+      queue-bootstrap: {condition: service_completed_successfully}
+  fetcher:
+    <<: *runtime
+    image: jobfinder-backend:local
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    command: [uvicorn, app.fetcher.main:app, --host, '0.0.0.0', --port, '8001', --workers, '1', --no-access-log, --no-proxy-headers]
+    environment:
+      JOBFINDER_FETCH_PROXY_URL: http://egress-proxy:3128
+      JOBFINDER_FETCH_TOKEN_FILE: /run/secrets/fetcher_token
+      JOBFINDER_FETCH_STATE_FILE: /data/fetcher/origins.sqlite3
+      JOBFINDER_FETCH_ISOLATION_VERIFIED: 'false'
+    secrets: [fetcher_token]
+    volumes: [fetch_state:/data/fetcher]
+    networks: [fetch_control, fetch]
+    read_only: true
+    tmpfs: [/tmp:size=64m,mode=1777]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    pids_limit: 128
+    init: true
+    depends_on: [egress-proxy]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  egress-proxy:
+    <<: *runtime
+    image: ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
+    user: '13:13'
+    entrypoint: [/usr/sbin/squid]
+    command: [-f, /etc/squid/squid.conf, -NYC]
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=1777]
+    cap_drop: [ALL]
+    volumes: [./deploy/squid.conf:/etc/squid/squid.conf:ro]
+    networks: [fetch, public_outbound]
+    mem_limit: 256m
+    pids_limit: 128
+  ntfy:
+    <<: *runtime
+    image: jobfinder-ntfy:local
+    build:
+      context: .
+      dockerfile: deploy/ntfy.Dockerfile
+      args:
+        NTFY_IMAGE: ${NTFY_IMAGE:-binwiederhier/ntfy@sha256:f2419f405127afa868f10985c1a41449e673477cee1eb19994339a5ae8b592e7}
+    command: [serve, --config, /etc/ntfy/server.yml]
+    environment:
+      NTFY_BASE_URL: https://${TAILNET_HOST}:8443
+    volumes:
+      - ntfy_state:/var/lib/ntfy
+      - ./deploy/ntfy.yml:/etc/ntfy/server.yml:ro
+    networks: [notification]
+    user: '10001:10001'
+    init: true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -T 3 -O - http://localhost:8080/v1/health |
+          grep -Eq '"healthy"[[:space:]]*:[[:space:]]*true'
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs: [/tmp:size=32m,mode=1777]
+    cap_drop: [ALL]
+    mem_limit: 256m
+    pids_limit: 128
   edge:
+    <<: *runtime
+    image: jobfinder-edge:local
     build:
       context: .
       dockerfile: deploy/frontend.Dockerfile
-    ports: ['127.0.0.1:8443:443']
+    environment:
+      LAN_HOST: ${LAN_HOST}
+      TAILNET_HOST: ${TAILNET_HOST}
+    ports:
+      - '${LAN_IP:?Set the private LAN IPv4 address}:443:8443'
+      - '${LAN_IP}:8443:9443'
+      - '127.0.0.1:8080:8080'
+      - '127.0.0.1:8081:8081'
     volumes: [caddy_data:/data, caddy_config:/config]
-    networks: [core]
+    networks: [core, notification]
     depends_on:
       api: {condition: service_healthy}
-    restart: unless-stopped
+      ntfy: {condition: service_healthy}
+    user: '10001:10001'
+    read_only: true
+    tmpfs: [/tmp:size=32m,mode=1777]
+    cap_drop: [ALL]
+    mem_limit: 256m
+    pids_limit: 128
 secrets:
-  db_password:
-    file: .secrets/db_password
+  db_password: {file: .secrets/db_password}
+  openrouter_api_key: {file: .secrets/openrouter_api_key}
+  brave_api_key: {file: .secrets/brave_api_key}
+  fetcher_token: {file: .secrets/fetcher_token}
+  ntfy_publisher_token: {file: .secrets/ntfy_publisher_token}
 volumes:
   postgres:
   documents:
+  fetch_state:
+  ntfy_state:
   caddy_data:
   caddy_config:
 networks:
-  core:
-    internal: true
+  core: {internal: true}
+  notification: {internal: true}
+  fetch_control: {internal: true}
+  fetch: {internal: true}
+  provider_outbound: {}
+  public_outbound: {}

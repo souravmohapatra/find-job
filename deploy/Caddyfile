@@ -1,0 +1,48 @@
+{
+	admin off
+	skip_install_trust
+	auto_https disable_redirects
+}
+
+(app) {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		header Cache-Control "no-cache"
+		file_server
+	}
+}
+
+(notifications) {
+	reverse_proxy ntfy:8080 {
+		flush_interval -1
+	}
+}
+
+https://{$LAN_HOST}:8443 {
+	tls internal
+	import app
+}
+
+https://{$LAN_HOST}:9443 {
+	tls internal
+	import notifications
+}
+
+http://{$TAILNET_HOST}:8080 {
+	import app
+}
+
+http://{$TAILNET_HOST}:8081 {
+	import notifications
+}

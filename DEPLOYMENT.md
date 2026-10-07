@@ -11,7 +11,7 @@ Target: Ubuntu Server with Docker Engine and Docker Compose v2, reachable over t
 | worker | Procrastinate control/fetch/notify queues | Document volume; PostgreSQL |
 | ai-worker | Procrastinate AI queue | Document volume; PostgreSQL |
 | db | PostgreSQL 17 | Database volume |
-| fetcher | HTTPX/Playwright service for public pages | None; bounded temporary files |
+| fetcher | HTTPX service; Playwright rendering pending | Origin pacing/cooldown state; bounded temporary files |
 | egress-proxy | Squid destination filtering for fetcher | No application data |
 | ntfy | Private notification server | Auth and message-cache volume |
 | migrate | One-shot application and queue migrations | Database |
@@ -78,11 +78,11 @@ This is an opt-in development exception, not the deployment topology. Do not app
 
 ## Current deployment scaffolding (not release-ready)
 
-`compose.yaml`, `compose.fetch.yaml` and `deploy/backend.Dockerfile` are development scaffolding. The merged configuration parses, but the full images/stack have not been built or validated; the edge image definition, ntfy integration, fixed-provider egress/secrets, production image pinning and host ingress configuration still need completion. Do not treat the loopback-only edge placeholder as completed LAN/tailnet deployment.
+`compose.yaml` now declares all ten services, including queue bootstrap, workers, fetcher, proxy, ntfy and edge. `compose.fetch.yaml` is a compatibility no-op. The frontend image and Caddy/ntfy configuration files now exist. Configuration checks pass, but images and the full stack have not been built or runtime-validated. Do not treat these definitions as completed LAN/tailnet deployment. Python, Node, Caddy, PostgreSQL, Squid and ntfy base digests are pinned. ntfy v2.27.0 was pulled successfully and its non-root image was built/checked locally.
 
-The fetch overlay pins Squid and configures internal fetch/control networks, no published fetch/proxy ports, a non-root read-only proxy and an independent fetcher credential/state volume. `JOBFINDER_FETCH_ISOLATION_VERIFIED` remains false. `python3 scripts/check-proxy.py` checks literal-address/method/port ACLs using the cached image with `--pull never` and `--network none`, and cleans up its own container. It does not prove DNS rebinding resistance, browser resource isolation or Compose bypass resistance. Those gates must pass before enabling arbitrary fetching; the database host-network exception does not apply to fetching.
+The main Compose file pins Squid and configures internal fetch/control networks, no published fetch/proxy ports, a non-root read-only proxy and an independent fetcher credential/state volume. `JOBFINDER_FETCH_ISOLATION_VERIFIED` remains false. `python3 scripts/check-proxy.py` checks literal-address/method/port ACLs using the cached image with `--pull never` and `--network none`, and cleans up its own container. It does not prove DNS rebinding resistance, browser resource isolation or Compose bypass resistance. Those gates must pass before enabling arbitrary fetching; the database host-network exception does not apply to fetching.
 
-Search runtime settings: `JOBFINDER_SEARCH_MODE` defaults to mock; `JOBFINDER_BRAVE_KEY_FILE` names a mounted credential file. Daily/monthly UTC request ceilings default to 300/1000 and can be changed through `JOBFINDER_SEARCH_DAILY_LIMIT`/`JOBFINDER_SEARCH_MONTHLY_LIMIT`. These are application limits, not a claim about the provider account’s billing cycle or allowance. Search reservations/results and cooldown persist in PostgreSQL. Keep current-window ledger records during retention/maintenance; restoring an old database cannot prove unused provider quota. Secret mounting and fixed-provider outbound access are still part of deployment completion.
+Search runtime settings: `JOBFINDER_SEARCH_MODE` defaults to mock; `JOBFINDER_BRAVE_KEY_FILE` names a mounted credential file. Daily/monthly UTC request ceilings default to 300/1000 and can be changed through `JOBFINDER_SEARCH_DAILY_LIMIT`/`JOBFINDER_SEARCH_MONTHLY_LIMIT`. These are application limits, not a claim about the provider account’s billing cycle or allowance. Search reservations/results and cooldown persist in PostgreSQL. Keep current-window ledger records during retention/maintenance; restoring an old database cannot prove unused provider quota. The worker mounts the Brave secret and joins a provider-outbound network. API/AI worker mount the OpenRouter secret; the general worker mounts the ntfy publisher secret. Provider URLs remain fixed in application code; this network is not a domain-allowlisting proxy. Real provider access and credential readability still require deployment validation.
 
 
 ## Implemented notification transport checkpoint
@@ -94,3 +94,37 @@ Each delivery attempt captures non-secret destination configuration; a changed d
 The sending state commits before HTTP. Control ticks recover abandoned sending records to unknown, never automatically resend them, and release definitely-unsent terminal events for later scheduled selection. In-flight profile purge erases local summary contents and cancels later work; already-dispatched requests cannot be recalled. Authenticated history exposes the latest attempt and safe receipt/error fields. Dedicated manual resend/test-message endpoints and notification Settings controls are implemented. Real local ntfy acceptance and deployment wiring remain pending.
 
 Explicit owner resends retain the original dated summary and start a fresh three-attempt window ending 30 minutes after the request. An unknown original outcome requires duplicate acknowledgement; if that resend fails definitely, the original uncertainty and event reservations remain. Standalone test messages use the same transport, destination cooldown and recovery rules without changing daily digest membership. Scheduled delivery can be disabled while the owner explicitly tests or resends. Mock mode never publishes or records a synthetic successful receipt.
+
+## Preparing the Ubuntu deployment (configuration implemented; runtime gates pending)
+
+Run these preparation steps on the intended host after its dependency access is established. They are not evidence that deployment has run here:
+
+```bash
+python3 scripts/init-deployment.py
+# Edit deploy/.env: actual LAN_IP, LAN_HOST and TAILNET_HOST; review the pinned ntfy release.
+python3 scripts/check-deployment.py --env-file deploy/.env
+```
+
+Initialization preserves existing files and permissions. It creates random DB/fetcher credentials only when missing, empty provider/publisher files, and a non-secret deployment parameter file. It does not read or import the development root .env. Keep `.secrets` owner-only (0700). File-backed Compose secrets preserve host permissions: their files must be readable by the mounted container users, including UID 10001 and PostgreSQL. New files use 0644 **inside that private directory**; existing mode-0600 files need explicit adjustment before deployment. Do not make the directory public or move readable secret files outside it. Each service receives only its declared secrets. Preflight verifies host directory/file permissions and requires nonempty credentials when the corresponding live mode is selected; it cannot prove successful provider authentication.
+
+With no arguments, `scripts/check-deployment.py` checks the template using synthetic host values and the pinned ntfy base. It neither pulls nor starts anything. With `--env-file`, it also checks actual secret files. Image builds, credentials and service connectivity remain separate gates.
+
+After preflight, successful image builds and resolution of the runtime blockers:
+
+```bash
+docker compose --env-file deploy/.env build
+docker compose --env-file deploy/.env up -d
+docker compose --env-file deploy/.env exec api python -m app.cli create-owner
+```
+
+Dependency failures remain stop-and-report events. Current npm and uv lockfiles contain private package-registry URLs; an off-network host needs portable lockfiles prepared and verified there before building. No registry rewrite or certificate workaround was performed in this development environment. The backend image still provides HTTP-only fetching; a browser-enabled image remains pending the Python Playwright dependency gate.
+
+Create two regular ntfy accounts through its local CLI: `publisher` and `reader`. Grant only `publisher <topic> write-only` and `reader <topic> read-only` using `ntfy access`; issue a publisher token and store it privately in `.secrets/ntfy_publisher_token`. Use the reader account in the ntfy client. Account creation, token storage and actual denied/allowed access checks remain installation steps; no credentials are embedded in the YAML. The shipped config denies anonymous access, retains a seven-day cache and leaves attachments, external wake-up and Web Push disabled. Refer to the [ntfy authentication configuration](https://docs.ntfy.sh/config/#access-control).
+
+The edge maps only the configured RFC1918 LAN address (443/8443) and loopback (8080/8081). The internal container TLS listener ports are 8443/9443, allowing non-root Caddy with all capabilities dropped. Follow the earlier host Tailscale Serve and Docker-aware firewall steps; they are not installed automatically. API cookies stay Secure while Caddy/Tailscale terminate TLS. The API ignores forwarded headers and accepts only explicit configured hosts/origins. Caddy streams ntfy responses with [flush_interval](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#streaming) configured for immediate flushing.
+
+Fetcher's `JOBFINDER_FETCH_ISOLATION_VERIFIED` remains hard-coded false. Internal networks and Squid are configured, but the required worker-to-fetcher-only stateful firewall boundary is not installed or verified. Do not enable fetching until same-bridge bypass/private-range/DNS/browser checks pass on the intended host. Do not extend the development database host-network exception.
+
+The initial non-root Caddy check failed with `exec /usr/bin/caddy: operation not permitted` (exit 255). Inspection identified the inherited `cap_net_bind_service=ep` file capability. The runtime-base image removes it because all container listener ports are above 1024. That stage builds from the cached base, and Caddy adapt/validation now passes under the same non-root, read-only, cap-drop-ALL, network-none restrictions. This is resolved image configuration, not a host-security/network workaround. Full static serving, API routing, TLS client trust and host ingress remain unverified.
+
+The non-root ntfy image builds offline from the pinned cached base, owns its state directory, and has a health check. `python3 scripts/check-ntfy.py` validates a disposable network-none server with synthetic credentials: anonymous denial, publish-only bearer-token access, rejection of publisher reads/unrelated topics, reader-only cached-message access and a matching receipt. It removes its own temporary container and never publishes ports or contacts real devices. These checks do not prove app-worker-to-ntfy Compose delivery or phone notification delivery. Normal Compose connectivity, backup/restore and full application image builds remain open.
