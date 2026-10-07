@@ -4,15 +4,101 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from app.api.inventory_contracts import Availability, JobDetail, JobPage, JobView
+from app.ai.configuration import capture
+from app.api.contracts import OperationView
+from app.api.inventory_contracts import AssessmentView, Availability, JobDetail, JobPage, JobView
 from app.auth import DB, Auth
-from app.collection.models import Company, Job, JobRevision, JobSource, Source
+from app.collection.models import Company, Job, JobAssessment, JobRevision, JobSource, Source
+from app.config import get_settings
+from app.domain.matching import POLICY_VERSION
 from app.errors import problem
+from app.profile_models import Operation, Profile, ProfileRevision
 from app.services.operations import request_hash
 from fastapi import APIRouter, Query
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import ColumnElement, func, select, tuple_
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def matching_context(db: Session) -> tuple[UUID | None, UUID | None, str]:
+    profile_id = db.scalar(
+        select(ProfileRevision.id)
+        .join(
+            Profile,
+            (Profile.id == ProfileRevision.profile_id)
+            & (Profile.current_revision == ProfileRevision.revision),
+        )
+        .where(Profile.id == 1)
+    )
+    config = capture(db, "job_matching")
+    return profile_id, UUID(config) if config else None, get_settings().integration_mode
+
+
+def assessment_conditions(
+    context: tuple[UUID | None, UUID | None, str],
+) -> tuple[ColumnElement[bool], ...]:
+    profile_id, config_id, mode = context
+    return (
+        JobAssessment.profile_revision_id == profile_id,
+        JobAssessment.config_id == config_id,
+        JobAssessment.policy_version == POLICY_VERSION,
+        JobAssessment.integration_mode == mode,
+    )
+
+
+def enrich(
+    db: Session, items: list[JobView], context: tuple[UUID | None, UUID | None, str]
+) -> None:
+    if not items:
+        return
+    ids = [item.revision_id for item in items]
+    current = {
+        row.job_revision_id: row
+        for row in db.scalars(
+            select(JobAssessment).where(
+                JobAssessment.job_revision_id.in_(ids), *assessment_conditions(context)
+            )
+        )
+    }
+    historical = set(
+        db.scalars(
+            select(JobRevision.job_id)
+            .join(JobAssessment, JobAssessment.job_revision_id == JobRevision.id)
+            .where(JobRevision.job_id.in_([item.id for item in items]))
+            .distinct()
+        )
+    )
+    profile_id, config_id, mode = context
+    operations: dict[str, Operation] = {}
+    if profile_id:
+        statement = select(Operation).where(
+            Operation.kind == "job_assess",
+            Operation.parameters["job_revision_id"].astext.in_(
+                [str(identifier) for identifier in ids]
+            ),
+            Operation.parameters["profile_revision_id"].astext == str(profile_id),
+            Operation.parameters["policy_version"].astext == POLICY_VERSION,
+            Operation.parameters["integration_mode"].astext == mode,
+        )
+        config_field = Operation.parameters["config_id"].astext
+        statement = statement.where(
+            config_field == str(config_id) if config_id else config_field.is_(None)
+        )
+        for operation in db.scalars(
+            statement.order_by(Operation.created_at.desc(), Operation.id.desc())
+        ):
+            operations.setdefault(operation.parameters["job_revision_id"], operation)
+    for item in items:
+        row = current.get(item.revision_id)
+        if row:
+            item.assessment_status = "assessed"
+            item.assessment = AssessmentView.model_validate(row)
+        elif item.id in historical:
+            item.assessment_status = "stale"
+        pending = operations.get(str(item.revision_id))
+        if pending:
+            item.assessment_operation = OperationView.model_validate(pending, from_attributes=True)
 
 
 def job_view(job: Job, revision: JobRevision, label: str) -> JobView:
@@ -41,11 +127,14 @@ def jobs(
     limit: int = Query(30, ge=1, le=100),
     cursor: str | None = Query(None, max_length=1000),
 ) -> JobPage:
-    if view == "recommended":
+    context = matching_context(db)
+    available = context[0] is not None and context[1] is not None
+    if view == "recommended" and not available:
         raise problem(
             503,
             "matching_unavailable",
-            "Shortlisting is not available yet. Browse all collected jobs.",
+            "Review a profile and configure a matching model to enable shortlisting. "
+            "Browse all collected jobs.",
         )
     statement = (
         select(Job, JobRevision, Company.label)
@@ -55,6 +144,12 @@ def jobs(
         )
         .join(Company, Company.id == Job.company_id)
     )
+    if view == "recommended":
+        statement = statement.join(
+            JobAssessment, JobAssessment.job_revision_id == JobRevision.id
+        ).where(
+            *assessment_conditions(context), JobAssessment.category.in_(["match", "possible_match"])
+        )
     if company_id:
         if db.get(Company, company_id) is None:
             raise problem(404, "company_not_found", "This company watch could not be found.")
@@ -73,7 +168,7 @@ def jobs(
                 func.plainto_tsquery("simple", q.strip()),
             )
         )
-    filters = request_hash([company_id, availability, q.strip(), view])
+    filters = request_hash([company_id, availability, q.strip(), view, context, POLICY_VERSION])
     if cursor:
         try:
             payload = json.loads(base64.urlsafe_b64decode(cursor))
@@ -92,6 +187,7 @@ def jobs(
         statement.order_by(Job.first_seen_at.desc(), Job.id.desc()).limit(limit + 1)
     ).all()
     items = [job_view(job, revision, label) for job, revision, label in rows[:limit]]
+    enrich(db, items, context)
     next_cursor = None
     if len(rows) > limit:
         last = items[-1]
@@ -104,7 +200,7 @@ def jobs(
                 }
             ).encode()
         ).decode()
-    return JobPage(items=items, next_cursor=next_cursor)
+    return JobPage(items=items, next_cursor=next_cursor, matching_available=available)
 
 
 @router.get("/{identifier}", response_model=JobDetail)
@@ -130,8 +226,10 @@ def job_detail(identifier: UUID, session: Auth, db: DB) -> JobDetail:
             .order_by(Source.id)
         )
     )
+    item = job_view(job, revision, label)
+    enrich(db, [item], matching_context(db))
     return JobDetail(
-        **job_view(job, revision, label).model_dump(),
+        **item.model_dump(),
         sources=sources,
         revision_count=job.current_revision,
     )

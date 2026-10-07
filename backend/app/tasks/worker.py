@@ -59,7 +59,7 @@ def dispatch() -> int:
         for operation in pending:
             queue = (
                 "ai"
-                if operation.kind in {"profile_ingest", "ai_validate", "ai_reconcile"}
+                if operation.kind in {"profile_ingest", "ai_validate", "ai_reconcile", "job_assess"}
                 else "fetch"
                 if operation.kind in {"source_collect", "discovery_step"}
                 else "control"

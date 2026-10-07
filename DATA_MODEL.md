@@ -47,7 +47,7 @@ Availability is derived from job_sources. Three consecutive complete successful 
 
 ## Transaction and index rules
 
-- Unique immutable assessment identity: job revision + profile revision + policy/prompt version + task-model configuration revision. Retries update attempt metadata, not duplicate assessments.
+- Unique immutable assessment identity: job revision + profile revision + policy/prompt version + task-model configuration revision + integration mode (mock/live). Retries update attempt metadata, not duplicate assessments.
 - Persist collected jobs/revisions and assessment intents together. Persist a completed assessment and eligible notification event together.
 - Profile activation and reassessment intent creation are atomic. Reassessment expands in batches without a huge transaction.
 - Profile edits use optimistic concurrency (`If-Match` revision); reject conflicting saves with 409 and retain the user's form data.

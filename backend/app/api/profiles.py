@@ -340,7 +340,13 @@ def activate_revision(db: DB, profile: Profile, body: ProfileInput) -> ProfileRe
     db.flush()
     profile.current_revision = revision.revision
     create_operation(
-        db, "profile_reassess", str(revision.id), {"profile_revision_id": str(revision.id)}
+        db,
+        "profile_reassess",
+        str(revision.id),
+        {
+            "profile_revision_id": str(revision.id),
+            "integration_mode": get_settings().integration_mode,
+        },
     )
     return revision
 
@@ -462,7 +468,7 @@ def purge_profile(body: PurgeConfirmation, session: Auth, db: DB) -> None:
     db.execute(
         update(Operation)
         .where(
-            Operation.kind.in_(["profile_ingest", "profile_reassess"]),
+            Operation.kind.in_(["profile_ingest", "profile_reassess", "job_assess"]),
             Operation.state.in_(["queued", "running", "blocked"]),
         )
         .values(state="cancelled", lease_token=None)

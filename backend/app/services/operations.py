@@ -91,8 +91,12 @@ def process_operation(operation_id: UUID) -> None:
             from app.services.profiles import analyze_document
 
             result = analyze_document(UUID(parameters["document_id"]), operation_id, parameters)
-        elif kind in {"company_check", "company_discover"}:
+        elif kind in {"company_check", "company_discover", "profile_reassess"}:
             pass  # Fan-out is committed with completion after the lease is checked.
+        elif kind == "job_assess":
+            from app.services.matching import prepare as prepare_assessment
+
+            assessment_result = prepare_assessment(parameters, operation_id)
         elif kind == "discovery_step":
             from app.collection.discovery import prepare
 
@@ -125,6 +129,15 @@ def process_operation(operation_id: UUID) -> None:
 
                 save_analysis(db, UUID(parameters["document_id"]), result)
             check_progress = None
+            if kind == "job_assess":
+                from app.services.matching import save
+
+                save(db, parameters, operation_id, assessment_result)
+            if kind == "profile_reassess":
+                from app.services.matching import expand
+
+                count = expand(db, parameters)
+                check_progress = f"{count} job assessments queued or already pending."
             if kind == "company_discover":
                 from app.collection.discovery import begin
                 from app.collection.models import Company

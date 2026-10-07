@@ -174,3 +174,32 @@ class SearchState(Base):
     __tablename__ = "search_state"
     id: Mapped[int] = mapped_column(primary_key=True)
     next_allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class JobAssessment(Base):
+    __tablename__ = "job_assessments"
+    __table_args__ = (
+        UniqueConstraint(
+            "job_revision_id",
+            "profile_revision_id",
+            "config_id",
+            "policy_version",
+            "integration_mode",
+            name="uq_assessment_versions",
+        ),
+        CheckConstraint(
+            "category IN ('match','possible_match','not_match')", name="assessment_category"
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    job_revision_id: Mapped[UUID] = mapped_column(ForeignKey("job_revisions.id"), index=True)
+    profile_revision_id: Mapped[UUID] = mapped_column(
+        ForeignKey("profile_revisions.id", ondelete="CASCADE")
+    )
+    config_id: Mapped[UUID] = mapped_column(ForeignKey("ai_task_revisions.id"))
+    policy_version: Mapped[str] = mapped_column(String(30))
+    integration_mode: Mapped[str] = mapped_column(String(10), default="mock")
+    category: Mapped[str] = mapped_column(String(20))
+    report: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    operation_id: Mapped[UUID] = mapped_column(ForeignKey("operation_intents.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

@@ -400,3 +400,29 @@ Unstructured extraction contracts and mocked validation can continue with instal
 Added a separate job_extraction OpenRouter schema/prompt using only page spans and observed links, with no CV/profile input. Titles, employers, descriptions and optional fields require exact span quotations; URLs must refer to observed link IDs; duplicate/ambiguous detail links and invented fields are rejected before the provider's bounded repair completes. Closed/uncertain status remains explicit. Seven synthetic tests passed (1.47s), plus Ruff and strict mypy (46 source files). These tests mock inference; no model quality or integrated collection acceptance is claimed. The extraction queue/persistence path still needs implementation.
 
 Saving this contract work and the exact dependency blocker locally. Browser package installation remains stopped; no alternate dependency source, retry, certificate change or image download occurred. The goal remains active because other implementation work is available while the dependency question awaits the user.
+
+### Broad matching policy checkpoint
+
+Browser dependency setup remains stopped after the recorded UnknownIssuer failure; no new approval or retry has occurred. Continued independent matching implementation: profile-agnostic structured assessment, exact evidence validation, deterministic unrelated-function/required-criterion precedence, configurable 30-point inclusion, substantial versus possible categories and focus/expand/open domain handling. Missing or incomparable required facts stay uncertain; unsupported output raises an assessment error. Matching payloads omit nested original-CV quotations and redact unnecessary contact information.
+
+Static checks pass. Synthetic tests cover threshold boundaries, function intent without title blacklists, preferred versus required constraints, domain diversification, salary uncertainty, invalid evidence and minimized task payloads. Persistence, worker/reassessment integration, current-versus-stale job views and notifications remain unfinished; no live model quality claim.
+
+Matching persistence checkpoint: ten policy/assessment regressions passed (3.52s), including captured historical profile results, bounded reassessment, mode-change guard and profile-purge cleanup. Added an immutable assessment table keyed by job/profile/model/policy versions, AI-queue job handlers, continuation batches and policy-versioned idempotency keys. Profile deletion cascades through explanations and cancels pending/in-flight assessment operations. Original CV quotations are excluded from the matching payload.
+
+Initial mypy check reported `Incompatible import of prepare` and two dependent type errors because discovery and matching used the same branch-local import name in operations.py. Aliased the matching preparation import; final static checks are running with the complete backend suite. Added explicit current-version lookup, stale model/profile tests, lost-lease and in-flight purge regressions. Browser dependency work remains stopped; no new dependency fetch or provider call occurred.
+
+### Supplied CV format verification
+
+2026-10-07: Rechecked the supplied ignored PDF with scripts/check-cv.py: one page with text, 3,847 extracted characters, zero AI requests and no persisted extracted content. Git-ignore check passed. Three targeted synthetic format regressions passed (3.06s): invalid/input limits and DOCX text, multi-page PDF, and DOCX body order with nested tables and merged cells. No parser changes were needed for this check. The parser remains generic; this sample does not establish arbitrary PDF column order, scanned/OCR support or semantic profile accuracy. Those limitations remain acceptance work. Existing matching work was left unchanged; browser dependency setup remains stopped at the previously recorded certificate error.
+
+### Matching API integration checkpoint
+
+Twenty matching/persistence/inventory regressions passed (4.22s). Added current-version shortlist queries, typed explanations, explicit stale status and current operation/error details to all-jobs and detail responses. Mock/live modes now have separate persisted assessment and operation identities, preventing synthetic decisions from becoming current after a mode change. Static checks initially found import ordering, one long string and optional-operation variable typing; corrected. New API/mode regressions and migration checks follow. The portal still needs to consume these fields; no live inference or dependency retry occurred.
+
+### Broad matching and shortlist API validated locally
+
+Full backend suite passed 159 tests (61.78s); the preceding targeted policy/persistence/API suite passed 26 tests (13.76s). Migration consistency reports no new upgrade operations; Ruff lint/format and strict mypy pass (49 application source files). Generated OpenAPI types and TypeScript/Vite build pass (156.79 KB gzipped JavaScript; existing chunk-size warning). Final static fixes were import ordering, line formatting and separating optional lookup variables from ORM iteration variables.
+
+Validated coarse 30-point inclusion, unrelated-function precedence, unknown/required/domain handling, evidence validation, minimized profile payloads, bounded reassessment and replay, historical completion, lease loss, profile purge, current-versus-stale API behavior, both shortlist categories, rejection visibility in All jobs and mock/live separation. Provider inference was mocked at test boundaries; no live matching quality or integrated matching browser journey is claimed.
+
+Saving this phase locally. Next implement portal explanations and status, explicit reassessment/feedback and mocked end-to-end matching fixtures; continue extraction integration, notifications and deployment acceptance. Browser dependency setup remains stopped at the previously recorded UnknownIssuer error, with no new retry or approval. The complete PLAN.md goal remains active.

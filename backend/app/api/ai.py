@@ -86,7 +86,11 @@ def update_ai(
             db,
             "profile_reassess",
             f"ai:{row.id}",
-            {"ai_config_id": str(row.id), "reason": "model_changed"},
+            {
+                "ai_config_id": str(row.id),
+                "reason": "model_changed",
+                "integration_mode": get_settings().integration_mode,
+            },
         )
     db.commit()
     response.headers["ETag"] = f'"{row.revision}"'

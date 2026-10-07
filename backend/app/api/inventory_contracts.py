@@ -2,7 +2,9 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
+from app.api.contracts import OperationView
 from app.collection.contracts import Adapter, Posting, public_link
+from app.domain.matching import Assessment, Category
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -78,6 +80,18 @@ class RunView(BaseModel):
     finished_at: datetime | None
 
 
+class AssessmentView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    profile_revision_id: UUID
+    config_id: UUID
+    policy_version: str
+    integration_mode: Literal["mock", "live"]
+    category: Category
+    report: Assessment
+    created_at: datetime
+
+
 class JobView(BaseModel):
     id: UUID
     company_id: UUID
@@ -89,7 +103,9 @@ class JobView(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     posting: Posting
-    assessment_status: Literal["not_assessed"] = "not_assessed"
+    assessment_status: Literal["not_assessed", "stale", "assessed"] = "not_assessed"
+    assessment: AssessmentView | None = None
+    assessment_operation: OperationView | None = None
 
 
 class JobPage(BaseModel):

@@ -655,6 +655,79 @@ export interface components {
       /** Tasks */
       tasks: components['schemas']['TaskView'][];
     };
+    /** Assessment */
+    Assessment: {
+      /** Primary Function */
+      primary_function: string;
+      /**
+       * Relation
+       * @enum {string}
+       */
+      relation: 'aligned' | 'adjacent' | 'unrelated' | 'unclear';
+      /** Function Evidence */
+      function_evidence: components['schemas']['Evidence'][];
+      /** Relevance Score */
+      relevance_score?: number | null;
+      /** Score Evidence */
+      score_evidence?: components['schemas']['Evidence'][];
+      /** Plausible Connection */
+      plausible_connection: boolean;
+      /** Connection Evidence */
+      connection_evidence?: components['schemas']['Evidence'][];
+      /** Criteria */
+      criteria?: components['schemas']['CriterionResult'][];
+      /**
+       * Domain Status
+       * @enum {string}
+       */
+      domain_status: 'met' | 'not_met' | 'unknown';
+      /** Domain Evidence */
+      domain_evidence?: components['schemas']['Evidence'][];
+      /** Important Unknowns */
+      important_unknowns: boolean;
+      /** Transferable */
+      transferable?: components['schemas']['Reason'][];
+      /** Reasons */
+      reasons?: components['schemas']['Reason'][];
+      /** Gaps */
+      gaps?: components['schemas']['Reason'][];
+    };
+    /** AssessmentView */
+    AssessmentView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Profile Revision Id
+       * Format: uuid
+       */
+      profile_revision_id: string;
+      /**
+       * Config Id
+       * Format: uuid
+       */
+      config_id: string;
+      /** Policy Version */
+      policy_version: string;
+      /**
+       * Integration Mode
+       * @enum {string}
+       */
+      integration_mode: 'mock' | 'live';
+      /**
+       * Category
+       * @enum {string}
+       */
+      category: 'match' | 'possible_match' | 'not_match';
+      report: components['schemas']['Assessment'];
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+    };
     /** Body_upload_document_api_v1_profile_documents_post */
     Body_upload_document_api_v1_profile_documents_post: {
       /** File */
@@ -802,6 +875,28 @@ export interface components {
        * @enum {string}
        */
       strength: 'preferred' | 'required';
+    };
+    /** CriterionResult */
+    CriterionResult: {
+      /**
+       * Preference Id
+       * Format: uuid
+       */
+      preference_id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'met' | 'not_met' | 'unknown';
+      /** Explanation */
+      explanation: string;
+      /** Evidence */
+      evidence?: components['schemas']['Evidence'][];
+      /**
+       * Comparable
+       * @default false
+       */
+      comparable: boolean;
     };
     /** DiscoveryCandidate */
     DiscoveryCandidate: {
@@ -1070,9 +1165,11 @@ export interface components {
       /**
        * Assessment Status
        * @default not_assessed
-       * @constant
+       * @enum {string}
        */
-      assessment_status: 'not_assessed';
+      assessment_status: 'not_assessed' | 'stale' | 'assessed';
+      assessment?: components['schemas']['AssessmentView'] | null;
+      assessment_operation?: components['schemas']['OperationView'] | null;
       /** Sources */
       sources: components['schemas']['SourceView'][];
       /** Revision Count */
@@ -1129,9 +1226,11 @@ export interface components {
       /**
        * Assessment Status
        * @default not_assessed
-       * @constant
+       * @enum {string}
        */
-      assessment_status: 'not_assessed';
+      assessment_status: 'not_assessed' | 'stale' | 'assessed';
+      assessment?: components['schemas']['AssessmentView'] | null;
+      assessment_operation?: components['schemas']['OperationView'] | null;
     };
     /** LoginRequest */
     LoginRequest: {
@@ -1270,6 +1369,13 @@ export interface components {
     PurgeConfirmation: {
       /** Confirmation */
       confirmation: string;
+    };
+    /** Reason */
+    Reason: {
+      /** Text */
+      text: string;
+      /** Evidence */
+      evidence: components['schemas']['Evidence'][];
     };
     /** RetentionChange */
     RetentionChange: {
