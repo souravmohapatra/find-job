@@ -61,3 +61,7 @@ Test tools and gates are selected below. Later validation must record what ran, 
 | Performance | On the declared deployment hardware, inventory API p95 under 500ms for 10k jobs; 100 new complete listings assessed within two hours; measure application memory plus provider latency/cost before accepting sizing and budgets. |
 
 The thresholds are selected acceptance targets, not observed results. Exact task models are deferred; final model evaluation waits for selection. If a chosen model misses the quality/performance gates, change that task's model/configuration and repeat affected checks. No silent model fallback is allowed. Record versions, commands, fixtures, hardware, timestamps and limitations with test results.
+
+## Implementation evidence: backend dependency setup
+
+2026-10-07: Approved package-registry sync with command-local SSL_CERT_DIR unset completed successfully (57 resolved / 55 installed); backend/uv.lock generated and parsed without embedded URL credentials. TLS remained enabled. Ruff lint, formatting and strict mypy passed for the current backend foundation. The isolated Compose PostgreSQL service started using its cached image and answered container-local SQL. Backend integration tests did not complete: host-to-container database handshakes timed out, and the initial waiting test run was interrupted. This does not pass milestone 1, authentication, migration or deployment acceptance. No frontend or full product validation has run.

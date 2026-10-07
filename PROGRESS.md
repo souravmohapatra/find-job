@@ -1,10 +1,12 @@
 # Progress and continuation
 
+Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
+
 Updated: 2026-10-07.
 
 ## Current state
 
-High-level planning and implementation design are documented. The user authorized selecting and recording implementation details and fixed Docker Compose on Ubuntu Server, LAN and local tailnet only, no public access. Subsequent steering requires OpenRouter for all LLM work, independent task models, and model IDs decided later. No application code, installation, build, model run, container startup or remote write has occurred.
+Implementation is authorized and in progress. Backend dependencies are installed and locked through the approved package-registry Python index. Backend authentication/migration source passes static checks but runtime tests are blocked by host-to-container PostgreSQL handshake timeouts. No application phase is complete; frontend and the remaining product flows are still pending.
 
 ## Completed
 
@@ -31,7 +33,7 @@ Public official documentation and repository READMEs informed the plan. External
 
 ## Next authorized boundary
 
-The requested design/documentation phase is complete after the final consistency checks. The next product work is implementation milestone 1 in PLAN.md when requested. Do not interpret a technical plan as authorization to install packages, launch infrastructure, or alter the Ubuntu host now.
+Continue implementation milestone 1 after resolving the current test database connectivity blocker. Local implementation, dependency setup, container runtime and validation are authorized; retain the dependency-failure boundary in AGENTS.md.
 
 ## Resume notes
 
@@ -58,3 +60,17 @@ The configured npm proxy passed npm ping. Backend foundation code, authenticatio
 The user clarified that this development environment is on a restricted development network: failed dependency fetch/sync/image pulls must be reported as blockers rather than worked around. This rule is now in AGENTS.md. Await user-provided dependency/network configuration before resuming installation. The validated planning baseline is committed as a8e8986; do not represent the unvalidated implementation as a completed phase.
 
 The already-running image pulls finished successfully for postgres:17-alpine, python:3.12-slim, node:22-alpine and caddy:2-alpine. No download process remains pending. The current blocker is Python/uv certificate trust.
+
+## Approval-review blocker on the authorized retry
+
+The goal-resume instruction specified one retry through the package-registry Python index, preserving TLS and existing .netrc credentials, and a second attempt with SSL_CERT_DIR unset only if the first returned UnknownIssuer. Automatic approval review rejected the first command before execution. After checking the existing rule's exception for new user instructions, the same command was resubmitted with explicit reference to the resume authorization; review again rejected it because it did not recognize that authorization as a user message. Neither dependency attempt executed. No credentials were displayed or modified, no TLS settings changed, and no further network attempt was made. Asked the user to provide the authorization in ordinary chat so review can recognize it. Backend implementation remains unvalidated and uncommitted.
+
+Manual approval subsequently allowed the exact first package-registry command to run. It exited 2 fetching `https://packages.example.invalid/python/simple/mypy/`: `client error (Connect)` / `invalid peer certificate: UnknownIssuer`. The conditional second command (`env -u SSL_CERT_DIR ...`) was submitted but automatic approval review rejected it before execution, stating that manual approval covered only the first exact command. The second dependency attempt has not run. No global settings or credentials were changed. Await recognizable approval for the exact conditional command; no alternate command or registry will be tried.
+
+## Dependency recovery and database validation blocker
+
+Specific manual approval subsequently allowed the conditional second attempt to execute. With SSL_CERT_DIR unset for that command only, package-registry sync succeeded: 57 packages resolved, 55 installed, backend/uv.lock generated. TLS verification remained enabled; .netrc and global settings were untouched. The prior approval and Python trust blockers are resolved for this completed setup attempt.
+
+Ruff check and format checks pass; strict mypy passes for all eight current app files. Parsed the lockfile and checked package artifact URLs for embedded credentials: none present. These are dependency/static checks, not application acceptance.
+
+Started the dedicated Compose test PostgreSQL container with `--pull never`; it is healthy and accepts SQL through container-local psql. Host TCP connection establishment to 127.0.0.1:55439 succeeds, but psycopg SQL handshakes to that address and to container bridge 172.19.0.2:5432 each expire with `connection timeout expired` under a five-second connect timeout. No host client appeared in pg_stat_activity. Interrupted the original pytest run while waiting for its initial migration connection; no tests completed. Added a ten-second connection/pool timeout to the application to avoid indefinite hangs. No Docker/firewall/network settings were modified. The isolated test container remains running for diagnosis; its database uses tmpfs and is separate from production data. User assistance is needed with the host/container network boundary before runtime validation can resume.
