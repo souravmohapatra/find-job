@@ -1052,3 +1052,39 @@ details[open] > summary {
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
+
+.source-rules {
+  margin-block: 1.5rem;
+}
+.source-rules fieldset {
+  min-width: 0;
+}
+.source-rules .field {
+  margin-block: 1rem;
+}
+.source-rules dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.source-rules dt {
+  font-weight: 600;
+}
+.source-rules dl > div {
+  margin-block: 0.75rem;
+}
+
+.source-rules > p,
+.source-rules .inventory-form {
+  max-width: 48rem;
+}
+.source-rules .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+.source-rules .form-actions .button {
+  width: auto;
+}

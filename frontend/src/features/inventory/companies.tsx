@@ -7,6 +7,7 @@ import { Failure, OperationStatus } from './shared';
 import { DiscoveryHistory } from './discovery';
 import { CompanyCoverage } from './coverage';
 import { JobList } from './jobs';
+import { SourceRules } from './source-rules';
 import { date, read, useCsrf, type Schemas } from './data';
 
 export function CompaniesPage() {
@@ -328,6 +329,9 @@ function SourceCard({ source, paused }: { source: Schemas['SourceView']; paused:
           {save.isSuccess && <p role="status">Source settings saved.</p>}
           <Button disabled={save.isPending}>Save source</Button>
         </form>
+        {source.adapter === 'generic_http' && !source.authoritative && (
+          <SourceRules source={source} />
+        )}
         {runs.isError && <Failure error={runs.error} />}
         {runs.data?.map((run) => (
           <p key={run.id}>

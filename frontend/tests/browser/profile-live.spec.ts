@@ -609,3 +609,61 @@ test('real notification schedule → reload → explicit test delivery', async (
   });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('website rules → saved preview → persisted custom extraction → automatic restoration', async ({
+  page,
+}) => {
+  await page.goto('/companies');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByLabel('Company name', { exact: true }).fill('Synthetic Rules');
+  await page.getByRole('button', { name: 'Follow company' }).click();
+  await expect(page.getByRole('heading', { name: 'Synthetic Rules', exact: true })).toBeVisible();
+  const companyId = new URL(page.url()).pathname.split('/').at(-1)!;
+  execFileSync('../backend/.venv/bin/python', ['../scripts/seed-browser-rules.py', companyId]);
+  await page.reload();
+  await page.getByText('Source settings and recent checks', { exact: true }).click();
+  await page.getByText('Website extraction rules (advanced)', { exact: true }).click();
+  await page.getByLabel('Use custom extraction rules').check();
+  for (const [label, value] of [
+    ['Job cards', '.job'],
+    ['Job title', 'h2'],
+    ['Job detail link', 'a'],
+    ['Job description', '.description'],
+    ['Employer name', '.employer'],
+  ]) {
+    await page.getByLabel(label, { exact: true }).fill(value);
+  }
+  await page.getByRole('button', { name: 'Preview saved page' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '1 verified job found' })).toBeVisible();
+  await expect(page.getByText('Strategy manager', { exact: true })).toBeVisible();
+  await page.getByText('Optional fields and pagination', { exact: true }).click();
+  for (const width of [375, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page
+      .locator('.source-rules')
+      .screenshot({ path: `test-results/source-rules-${width}.png` });
+  }
+  await page.getByRole('button', { name: 'Save extraction rules' }).click();
+  await expect(
+    page.getByText('Extraction rules saved. They apply to the next source check.'),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByText('Source settings and recent checks', { exact: true }).click();
+  await page.getByText('Website extraction rules (advanced)', { exact: true }).click();
+  await expect(page.getByLabel('Job cards', { exact: true })).toHaveValue('.job');
+  await page.getByLabel('Use custom extraction rules').uncheck();
+  await page.getByRole('button', { name: 'Save extraction rules' }).click();
+  await expect(
+    page.getByText('Extraction rules saved. They apply to the next source check.'),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByText('Source settings and recent checks', { exact: true }).click();
+  await page.getByText('Website extraction rules (advanced)', { exact: true }).click();
+  await expect(page.getByLabel('Use custom extraction rules')).not.toBeChecked();
+});
