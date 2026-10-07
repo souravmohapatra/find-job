@@ -1,15 +1,29 @@
-import { CompaniesPage, CompanyPage } from '../features/inventory/companies';
-import { JobsPage, JobPage } from '../features/inventory/jobs';
-import { AiSettings } from '../features/settings/ai';
-import { NotificationSettings } from '../features/settings/notifications';
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { ErrorBoundary } from '../components/error-boundary';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { BriefcaseBusiness, Building2, UserRound, Settings2, LogOut } from 'lucide-react';
 import { api, ApiError, errorMessage, type Session } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Login } from '../features/auth/login';
-import { ProfilePage } from '../features/profile/page';
+const CompaniesPage = lazy(() =>
+  import('../features/inventory/companies').then((page) => ({ default: page.CompaniesPage })),
+);
+const CompanyPage = lazy(() =>
+  import('../features/inventory/companies').then((page) => ({ default: page.CompanyPage })),
+);
+const JobsPage = lazy(() =>
+  import('../features/inventory/jobs').then((page) => ({ default: page.JobsPage })),
+);
+const JobPage = lazy(() =>
+  import('../features/inventory/jobs').then((page) => ({ default: page.JobPage })),
+);
+const ProfilePage = lazy(() =>
+  import('../features/profile/page').then((page) => ({ default: page.ProfilePage })),
+);
+const SettingsPage = lazy(() =>
+  import('../features/settings/page').then((page) => ({ default: page.SettingsPage })),
+);
 const nav = [
   { to: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { to: '/companies', label: 'Companies', icon: Building2 },
@@ -21,7 +35,10 @@ function RouteFocus() {
   const previous = useRef(pathname);
   useEffect(() => {
     if (previous.current !== pathname) {
-      document.querySelector<HTMLElement>('main h1')?.focus();
+      (
+        document.querySelector<HTMLElement>('main h1') ??
+        document.querySelector<HTMLElement>('main')
+      )?.focus();
       previous.current = pathname;
     }
     document.title = `${nav.find((item) => pathname.startsWith(item.to))?.label ?? 'Job Finder'} · Job Finder`;
@@ -29,6 +46,7 @@ function RouteFocus() {
   return null;
 }
 function Shell({ session }: { session: Session }) {
+  const { pathname } = useLocation();
   const client = useQueryClient();
   const logout = useMutation({
     mutationFn: () => api.logout(session.csrf_token),
@@ -79,52 +97,16 @@ function Shell({ session }: { session: Session }) {
           <span>Personal workspace</span>
           <span className="badge">Development preview</span>
         </header>
-        <main id="main" className="content">
+        <main id="main" className="content" tabIndex={-1}>
           <RouteFocus />
-          <Outlet />
+          <ErrorBoundary key={pathname} embedded>
+            <Suspense fallback={<p role="status">Opening page…</p>}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>
-  );
-}
-function Settings() {
-  const status = useQuery({ queryKey: ['status'], queryFn: api.status });
-  return (
-    <>
-      <p className="eyebrow">YOUR WORKSPACE</p>
-      <h1 tabIndex={-1}>Settings</h1>
-      <p className="page-description">Processing and workspace status.</p>
-      <section className="panel">
-        <h2>Connection</h2>
-        {status.isPending ? (
-          <p role="status">Checking workspace…</p>
-        ) : status.isError ? (
-          <div role="alert">
-            <p>{errorMessage(status.error)}</p>
-            <Button variant="secondary" onClick={() => void status.refetch()}>
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <dl className="settings-list">
-            <div>
-              <dt>Services</dt>
-              <dd>
-                {status.data.integration_mode === 'mock'
-                  ? 'Mock responses for development'
-                  : 'Live integrations'}
-              </dd>
-            </div>
-            <div>
-              <dt>Profile</dt>
-              <dd>{status.data.profile_configured ? 'Configured' : 'Not configured'}</dd>
-            </div>
-          </dl>
-        )}
-      </section>
-      <NotificationSettings />
-      <AiSettings />
-    </>
   );
 }
 export function App() {
@@ -167,7 +149,7 @@ export function App() {
         <Route path="/companies/:id" element={<CompanyPage />} />
         <Route path="/jobs/:id" element={<JobPage />} />
         <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route
           path="*"
           element={

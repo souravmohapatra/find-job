@@ -675,3 +675,19 @@ Isolated ntfy runtime validation passed using the new non-root image, network no
 Final ntfy checker rerun passed, including the exact tightened Compose health command. Template checks pass; Ruff/format pass for all 14 scripts and git diff --check is clean. Caddy runtime-base and non-root ntfy image builds/configuration checks are evidenced above. Main Compose now includes ten services; fetch overlay is retained as a compatibility no-op. README/PLAN/DEPLOYMENT/VALIDATION reflect the actual limits, including resolved Caddy capability failure. Saving this locally validated configuration slice; no full deployment or complete-goal claim.
 
 Next implement and validate backup/restore operation scripts and remaining UI release polish, while keeping the Python Playwright dependency setup stopped at UnknownIssuer. Full image dependency builds/off-network lock portability, normal Docker bridge and stateful fetch isolation, real application ntfy delivery, live providers/sources and host ingress require later acceptance. No user credential or root .env was changed.
+
+### Route loading and bundle reduction
+
+Deployment wiring saved as 15b8252. Continuing independent release work while dependency/network gates remain open: splitting inventory/profile/settings routes with React lazy imports and retaining the navigation shell during loading or route errors. Route changes focus the main landmark when a lazy heading is not yet available, while existing list-return restoration remains responsible for the originating job link. Moving Settings out of the initial app module. Component/build and full browser navigation checks follow; no dependency retry.
+
+Route-splitting checkpoint: production build passes with initial JavaScript reduced from 164.78 KB to 137.34 KB gzip, and separate inventory/profile/settings chunks. The oversized-chunk warning is gone. Existing 28 component tests and ESLint passed. Added focused slow-load and route-error boundary tests plus a browser failed-import/reload recovery journey; final checks and the full browser suite follow. No backend behavior changed.
+
+Final route-loading checks pass: all 30 component tests (3.86s), build at 137.34 KB gzip initial JavaScript without the previous chunk warning, ESLint and Prettier. Starting the full 11-journey browser suite, including the new failed-import recovery path. Frontend files/builds/Vitest remain frozen until this process exits.
+
+Browser checkpoint: the first five real API/database journeys passed (CV review/preferences, model settings, data purge, profile conflict recovery and billing recovery). The full 11-journey process is still running; frontend remains frozen. Read-only preparation for the next recovery phase confirms gpg, openssl and tar are installed locally; no dependency install or backup operation was attempted.
+
+### Route splitting locally validated
+
+All 11 browser journeys passed (2.3m), including preserved company-list focus/scroll, profile/settings workflows and explicit failed-page-download navigation/reload recovery (4.0s). Final build/lint/format and all 30 component tests passed as recorded above; initial JavaScript is 137.34 KB gzip without the prior chunk warning. Existing error handling remains at the application root, with an embedded route boundary retaining navigation. Documentation reflects the completed slice and limits. Saving a local commit; the full plan is still active.
+
+Next implement encrypted backup and isolated restore tooling using available local tools and synthetic data. Remaining blockers/gates include Python Playwright UnknownIssuer, dependency lockfile portability, deployment bridge/firewall isolation, full image builds, application-to-ntfy delivery, actual private ingress, live source/model quality, and the new-results UI indicator. No dependency retry, live provider request or deployment startup occurred in this phase.

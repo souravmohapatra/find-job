@@ -667,3 +667,24 @@ test('website rules → saved preview → persisted custom extraction → automa
   await page.getByText('Website extraction rules (advanced)', { exact: true }).click();
   await expect(page.getByLabel('Use custom extraction rules')).not.toBeChecked();
 });
+
+test('failed lazy page keeps navigation and reload recovers the page', async ({ page }) => {
+  await page.goto('/jobs');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
+  const profileModule = '**/src/features/profile/page.tsx';
+  await page.route(profileModule, (route) => route.abort('failed'));
+  await page.getByRole('navigation').getByRole('link', { name: 'Profile', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'This page could not load' })).toBeVisible();
+  await expect(page.getByRole('navigation')).toBeVisible();
+  await expect(page.getByRole('main')).toHaveCount(1);
+  await page.getByRole('navigation').getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await page.getByRole('navigation').getByRole('link', { name: 'Profile', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Reload page' })).toBeVisible();
+  await page.unroute(profileModule);
+  await page.getByRole('button', { name: 'Reload page' }).click();
+  await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+});
