@@ -36,4 +36,4 @@ A job's first discovery time is distinct from its advertised publication date. A
 
 ## Scope boundary
 
-The initial high-level plan has been extended into implementation design at the user's request. Technical decisions and defaults are now recorded; actual application implementation, installation, and runtime work have not started. Automatic application submission, CV rewriting, application tracking, multiple active profiles, OCR, and automatic company recommendations are outside v1.
+The initial high-level plan has been extended into implementation design at the user's request. Technical decisions and defaults are now recorded; application implementation is now authorized and underway. Current execution evidence and blockers are recorded in PROGRESS.md and VALIDATION.md. Automatic application submission, CV rewriting, application tracking, multiple active profiles, OCR, and automatic company recommendations are outside v1.

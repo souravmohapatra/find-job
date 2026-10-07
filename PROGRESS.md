@@ -6,7 +6,7 @@ Updated: 2026-10-07.
 
 ## Current state
 
-Implementation is authorized and in progress. Backend dependencies are installed and locked through the approved package-registry Python index. Backend authentication/migration source passes static checks but runtime tests are blocked by host-to-container PostgreSQL handshake timeouts. No application phase is complete; frontend and the remaining product flows are still pending.
+Implementation is authorized and in progress. Backend dependencies are installed and locked through the approved package-registry Python index. Backend authentication/migration source passes static checks but runtime tests are blocked by host-to-container PostgreSQL handshake timeouts. The frontend authentication/navigation slice has passed mocked validation; the integrated foundation milestone and remaining product flows are still pending.
 
 ## Completed
 
@@ -74,3 +74,11 @@ Specific manual approval subsequently allowed the conditional second attempt to 
 Ruff check and format checks pass; strict mypy passes for all eight current app files. Parsed the lockfile and checked package artifact URLs for embedded credentials: none present. These are dependency/static checks, not application acceptance.
 
 Started the dedicated Compose test PostgreSQL container with `--pull never`; it is healthy and accepts SQL through container-local psql. Host TCP connection establishment to 127.0.0.1:55439 succeeds, but psycopg SQL handshakes to that address and to container bridge 172.19.0.2:5432 each expire with `connection timeout expired` under a five-second connect timeout. No host client appeared in pg_stat_activity. Interrupted the original pytest run while waiting for its initial migration connection; no tests completed. Added a ten-second connection/pool timeout to the application to avoid indefinite hangs. No Docker/firewall/network settings were modified. The isolated test container remains running for diagnosis; its database uses tmpfs and is separate from production data. User assistance is needed with the host/container network boundary before runtime validation can resume.
+
+## Frontend foundation validated independently
+
+The configured npm proxy installed 298 packages and generated frontend/package-lock.json. No registry change was made; no embedded credentials appear in lockfile URLs. Implemented responsive sign-in, session loading/error/retry, CSRF-aware sign-out, route-preserving navigation, private-cache cleanup on logout/expiry, and explicit development-preview pages. CV upload, monitoring, matching and notifications are not implemented by this shell. Applied the ui-ux-pro-max guidance already selected in UI_UX.md, including keyboard labels/focus, accessible authentication, reduced motion and responsive layout.
+
+Validation passed: TypeScript/production Vite build, ESLint, six Vitest component/behavior tests, and three Playwright Chrome journeys at 375/768/1440 widths. Browser checks include sign-in, navigation focus, settings, CSRF sign-out, no horizontal page overflow, and zero axe violations on the checked login/workspace states. Inspected desktop and mobile screenshots. Browser API responses are mocked; none of these results validate backend authentication, private deployment or the full job-finding journey. Test servers terminated normally; screenshots remain ignored under frontend/test-results/.
+
+Read-only routing diagnosis narrowed the backend blocker: `ip route get 172.19.0.2` selects cscotun0, while Docker's br-5adb41e90655 interface for 172.19.0.0/16 is DOWN. This explains why a healthy container does not establish a host SQL session; it does not prove why the bridge is down. No VPN, routes or firewall settings were changed. User assistance is still needed at that boundary.
