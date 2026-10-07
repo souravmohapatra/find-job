@@ -12,6 +12,10 @@ The user grants autonomy over local Git activities: inspect, stage, create local
 
 The user has authorized implementation, project-local dependency installation, container builds/runs and validation in this development environment. Create local Git commits after successful validation phases. Use mock LLM/search responses during development; live paid API validation waits for the user. The configured npm package proxy is permitted for package operations; do not browse unrelated employer-internal systems. Involve the user for genuine blockers. Do not push or publish.
 
+## Dependency failure boundary
+
+The original development machine used a restricted network. The user explicitly requires failed dependency syncs, fetches or pulls (including Python/uv/pip, npm and Docker images) to be treated as blockers. Stop the affected setup work and report the original error to the user. Do not retry with alternate registries, mirrors, certificate/trust changes, disabled TLS verification, proxy changes or other workarounds unless the user provides new instructions. Checking the result of an already-running operation is allowed; do not start a replacement attempt. The configured npm package proxy is allowed for package operations only and does not authorize unrelated internal browsing.
+
 ## Product constraints
 
 - Docker Compose on Ubuntu Server, accessible only on the LAN and local tailnet. No public ingress or Tailscale Funnel. Follow DEPLOYMENT.md.
