@@ -14,12 +14,9 @@ from sqlalchemy.orm import Session
 
 
 def fetch_json(url: str) -> Any:
-    # Only the isolated fetcher may implement this transport; never fall back to direct HTTP.
-    raise OperationError(
-        "fetcher_unavailable",
-        "The isolated job-page fetcher is not configured. Existing vacancies are preserved.",
-        blocked=True,
-    )
+    from app.collection.transport import fetch_json as remote_fetch
+
+    return remote_fetch(url)
 
 
 def prepare_page(run_id: UUID, offset: int) -> InventoryPage:

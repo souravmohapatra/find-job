@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     secure_cookies: bool = True
     session_days: int = 7
     openrouter_key_file: Path = Path("/run/secrets/openrouter_api_key")
+    fetcher_url: str | None = None
+    fetcher_token_file: Path = Path("/run/secrets/fetcher_token")
     document_dir: Path = Path("/data/documents")
 
     @model_validator(mode="after")
