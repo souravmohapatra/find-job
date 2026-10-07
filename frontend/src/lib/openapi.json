@@ -439,6 +439,46 @@
       }
     },
     "/api/v1/profile/documents": {
+      "get": {
+        "tags": ["profile"],
+        "summary": "List Documents",
+        "operationId": "list_documents_api_v1_profile_documents_get",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": ["profile"],
         "summary": "Upload Document",
@@ -482,6 +522,50 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/documents/{document_id}/retention": {
+      "patch": {
+        "tags": ["profile"],
+        "summary": "Update Retention",
+        "operationId": "update_retention_api_v1_profile_documents__document_id__retention_patch",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -1081,6 +1165,97 @@
         "required": ["id", "kind", "description"],
         "title": "Criterion"
       },
+      "DocumentPage": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentView"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "type": "object",
+        "required": ["documents", "next_offset"],
+        "title": "DocumentPage"
+      },
+      "DocumentView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "retain_original": {
+            "type": "boolean",
+            "title": "Retain Original"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "media_type",
+          "size",
+          "status",
+          "retain_original",
+          "created_at",
+          "approved_at",
+          "deleted_at"
+        ],
+        "title": "DocumentView"
+      },
       "DraftSummary": {
         "properties": {
           "operation_id": {
@@ -1121,6 +1296,11 @@
       },
       "DraftView": {
         "properties": {
+          "document_available": {
+            "type": "boolean",
+            "title": "Document Available",
+            "default": false
+          },
           "operation_id": {
             "anyOf": [
               {
@@ -1706,6 +1886,17 @@
         "type": "object",
         "required": ["confirmation"],
         "title": "PurgeConfirmation"
+      },
+      "RetentionChange": {
+        "properties": {
+          "retain_original": {
+            "type": "boolean",
+            "title": "Retain Original"
+          }
+        },
+        "type": "object",
+        "required": ["retain_original"],
+        "title": "RetentionChange"
       },
       "SessionResponse": {
         "properties": {

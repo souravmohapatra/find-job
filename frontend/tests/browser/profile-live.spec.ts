@@ -101,3 +101,70 @@ test('real model settings → reload → explicit mock validation', async ({ pag
   const usage = await (await page.request.get('/api/v1/settings/ai/usage')).json();
   expect(usage.tasks.every((task: { calls_today: number }) => task.calls_today === 0)).toBe(true);
 });
+
+test('CV retention, original removal and explicit profile purge', async ({ page }) => {
+  await page.goto('/profile');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByLabel('CV file')).toBeVisible();
+  const session = await (await page.request.get('/api/v1/auth/me')).json();
+  const headers = { Origin: 'http://127.0.0.1:5173', 'X-CSRF-Token': session.csrf_token };
+  const before = await (await page.request.get('/api/v1/profile')).json();
+  const create = await page.request.patch('/api/v1/profile', {
+    headers: { ...headers, 'If-Match': `"${before.revision}"` },
+    data: {
+      facts: { summary: 'Synthetic teacher for deletion test' },
+      preferences: { desired_roles: ['Teaching'] },
+    },
+  });
+  expect(create.ok()).toBe(true);
+  const uploaded = await page.request.post('/api/v1/profile/documents', {
+    headers,
+    multipart: {
+      file: {
+        name: 'synthetic-teacher.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('Synthetic teacher\nTaught science'),
+      },
+    },
+  });
+  const document = await uploaded.json();
+  expect(uploaded.status()).toBe(202);
+  await page.reload();
+  await page.getByText('CV storage and profile data', { exact: true }).click();
+  const row = page.locator('.document-list li').first();
+  await row.getByLabel('Keep this original until I delete it').check();
+  await expect(row.getByLabel('Keep this original until I delete it')).toBeEnabled();
+  await page.reload();
+  await page.getByText('CV storage and profile data', { exact: true }).click();
+  await expect(row.getByLabel('Keep this original until I delete it')).toBeChecked();
+  await row.getByRole('button', { name: 'Remove original', exact: true }).click();
+  await row.getByRole('button', { name: 'Confirm removal' }).click();
+  await expect(row.getByText('Original file and raw text removed.')).toBeVisible();
+  expect(
+    (await page.request.get(`/api/v1/profile/documents/${document.resource_id}/download`)).status(),
+  ).toBe(404);
+  await expect(
+    page.getByText('Synthetic teacher for deletion test', { exact: true }),
+  ).toBeVisible();
+  await page.getByText('Delete profile and all CV data', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Delete profile and CVs' })).toBeDisabled();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/profile-data-${width}.png`, fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+  await page.getByLabel('Type DELETE PROFILE to confirm').fill('DELETE PROFILE');
+  await page.getByRole('button', { name: 'Delete profile and CVs' }).click();
+  await expect(page.getByRole('heading', { name: 'Your reviewed profile' })).not.toBeVisible();
+  const after = await (await page.request.get('/api/v1/profile')).json();
+  expect(after.revision_id).toBeNull();
+  expect(after.drafts).toEqual([]);
+  expect((await (await page.request.get('/api/v1/profile/documents')).json()).documents).toEqual(
+    [],
+  );
+});

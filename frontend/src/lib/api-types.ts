@@ -183,7 +183,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** List Documents */
+    get: operations['list_documents_api_v1_profile_documents_get'];
     put?: never;
     /** Upload Document */
     post: operations['upload_document_api_v1_profile_documents_post'];
@@ -191,6 +192,23 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  '/api/v1/profile/documents/{document_id}/retention': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update Retention */
+    patch: operations['update_retention_api_v1_profile_documents__document_id__retention_patch'];
     trace?: never;
   };
   '/api/v1/profile/drafts/{draft_id}': {
@@ -456,6 +474,38 @@ export interface components {
        */
       strength: 'preferred' | 'required';
     };
+    /** DocumentPage */
+    DocumentPage: {
+      /** Documents */
+      documents: components['schemas']['DocumentView'][];
+      /** Next Offset */
+      next_offset: number | null;
+    };
+    /** DocumentView */
+    DocumentView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Media Type */
+      media_type: string;
+      /** Size */
+      size: number;
+      /** Status */
+      status: string;
+      /** Retain Original */
+      retain_original: boolean;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Approved At */
+      approved_at: string | null;
+      /** Deleted At */
+      deleted_at: string | null;
+    };
     /** DraftSummary */
     DraftSummary: {
       /** Operation Id */
@@ -480,6 +530,11 @@ export interface components {
     };
     /** DraftView */
     DraftView: {
+      /**
+       * Document Available
+       * @default false
+       */
+      document_available: boolean;
       /** Operation Id */
       operation_id: string | null;
       /**
@@ -699,6 +754,11 @@ export interface components {
     PurgeConfirmation: {
       /** Confirmation */
       confirmation: string;
+    };
+    /** RetentionChange */
+    RetentionChange: {
+      /** Retain Original */
+      retain_original: boolean;
     };
     /** SessionResponse */
     SessionResponse: {
@@ -1201,6 +1261,37 @@ export interface operations {
       };
     };
   };
+  list_documents_api_v1_profile_documents_get: {
+    parameters: {
+      query?: {
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DocumentPage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   upload_document_api_v1_profile_documents_post: {
     parameters: {
       query?: never;
@@ -1224,6 +1315,39 @@ export interface operations {
         content: {
           'application/json': components['schemas']['OperationAccepted'];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  update_retention_api_v1_profile_documents__document_id__retention_patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RetentionChange'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {

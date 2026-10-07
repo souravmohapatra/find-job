@@ -8,6 +8,8 @@ REST JSON under `/api/v1`, served from the same origin as the web client. FastAP
 | --- | --- |
 | POST /auth/login; POST /auth/logout; GET /auth/me | Owner session creation/revocation and session state. |
 | GET /profile | Current reviewed profile, revision and draft status. |
+| GET /profile/documents | Owner-only paginated document metadata (20 per page); no original filename or extracted text. |
+| PATCH /profile/documents/{id}/retention | Change original-file retention for an available document. |
 | POST /profile/documents | Multipart upload; validates limits and returns document/operation IDs with 202. |
 | GET /profile/drafts/{id}; PATCH /profile/drafts/{id} | Review/edit extracted draft; no change to active profile. |
 | POST /profile/drafts/{id}/activate | Activate reviewed facts and preferences using expected base revision; queues reassessment. |

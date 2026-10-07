@@ -4,7 +4,13 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from app.ai.configuration import capture
-from app.api.contracts import DraftView, OperationAccepted, ProfileSnapshot, ProfileView
+from app.api.contracts import (
+    DocumentPage,
+    DraftView,
+    OperationAccepted,
+    ProfileSnapshot,
+    ProfileView,
+)
 from app.auth import DB, Auth
 from app.config import get_settings
 from app.documents.parser import DocumentError, detect_type
@@ -13,7 +19,7 @@ from app.errors import problem
 from app.profile_models import Document, Operation, Profile, ProfileDraft, ProfileRevision, now
 from app.services.operations import create_operation, operation_response, request_hash
 from app.services.profiles import validate_review
-from fastapi import APIRouter, File, Form, Header, Response, UploadFile
+from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, select, text, update
@@ -86,6 +92,7 @@ def get_profile(session: Auth, db: DB, response: Response) -> dict[str, Any]:
     )
     return {
         **revision_data(revision),
+        "revision": profile.current_revision if profile else 0,
         "drafts": [
             {
                 "id": d.id,
@@ -97,6 +104,48 @@ def get_profile(session: Auth, db: DB, response: Response) -> dict[str, Any]:
             for d in drafts
         ],
     }
+
+
+@router.get("/documents", response_model=DocumentPage)
+def list_documents(session: Auth, db: DB, offset: int = Query(default=0, ge=0)) -> dict[str, Any]:
+    rows = list(
+        db.scalars(
+            select(Document)
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .offset(offset)
+            .limit(21)
+        )
+    )
+    return {
+        "documents": [
+            {
+                "id": row.id,
+                "media_type": row.media_type,
+                "size": row.size,
+                "status": row.status,
+                "retain_original": row.retain_original,
+                "created_at": row.created_at,
+                "approved_at": row.approved_at,
+                "deleted_at": row.deleted_at,
+            }
+            for row in rows[:20]
+        ],
+        "next_offset": offset + 20 if len(rows) > 20 else None,
+    }
+
+
+class RetentionChange(BaseModel):
+    retain_original: bool
+
+
+@router.patch("/documents/{document_id}/retention", status_code=204)
+def update_retention(document_id: UUID, body: RetentionChange, session: Auth, db: DB) -> None:
+    lock_profile(db)
+    document = db.get(Document, document_id, with_for_update=True)
+    if document is None or document.deleted_at:
+        raise problem(404, "document_not_found", "The original document is no longer available.")
+    document.retain_original = body.retain_original
+    db.commit()
 
 
 @router.post("/documents", status_code=202, response_model=OperationAccepted)
@@ -206,7 +255,8 @@ def get_draft(draft_id: UUID, session: Auth, db: DB, response: Response) -> dict
         "base_revision": draft.base_revision,
         "facts": draft.facts,
         "preferences": draft.preferences,
-        "base_profile": revision_data(base),
+        "base_profile": {**revision_data(base), "revision": draft.base_revision},
+        "document_available": bool(document and not document.deleted_at),
         "spans": document.spans if document else None,
     }
 
@@ -340,6 +390,18 @@ def delete_document(document_id: UUID, session: Auth, db: DB) -> None:
     document.spans = None
     document.deleted_at = now()
     document.status = "deleted"
+    db.execute(
+        update(Operation)
+        .where(
+            Operation.kind == "profile_ingest",
+            Operation.parameters["document_id"].astext == str(document_id),
+            Operation.state.in_(["queued", "running", "blocked", "failed"]),
+        )
+        .values(state="cancelled", lease_token=None, progress="Original document deleted")
+    )
+    draft = db.scalar(select(ProfileDraft).where(ProfileDraft.document_id == document_id))
+    if draft and draft.status in {"processing", "blocked", "failed"}:
+        draft.status = "cancelled"
     db.commit()
 
 
@@ -370,5 +432,5 @@ def purge_profile(body: PurgeConfirmation, session: Auth, db: DB) -> None:
     db.execute(delete(ProfileDraft))
     db.execute(delete(Document))
     db.execute(delete(ProfileRevision))
-    profile.current_revision = 0
+    profile.current_revision += 1
     db.commit()

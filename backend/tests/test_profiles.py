@@ -418,3 +418,59 @@ def test_docx_preserves_section_order_nested_tables_and_merged_cells(client: Tes
     assert positions == sorted(positions)
     assert text.count("Curriculum lead") == 1
     assert text.count("Mentored six teachers") == 1
+
+
+def test_document_management_retention_and_cancellation(client: TestClient) -> None:
+    assert client.get("/api/v1/profile/documents").status_code == 401
+    headers = auth(client)
+    pending = upload(client, headers)
+    url = "/api/v1/profile/documents/" + pending["resource_id"]
+    page = client.get("/api/v1/profile/documents").json()
+    assert len(page["documents"]) == 1 and page["next_offset"] is None
+    assert "private-name" not in str(page) and "Synthetic product designer" not in str(page)
+    assert (
+        client.patch(
+            url + "/retention", headers=headers, json={"retain_original": True}
+        ).status_code
+        == 204
+    )
+    assert client.get("/api/v1/profile/documents").json()["documents"][0]["retain_original"] is True
+    assert client.delete(url, headers=headers).status_code == 204
+    process_operation(UUID(pending["operation_id"]))
+    assert client.get(pending["status_url"]).json()["state"] == "cancelled"
+    assert (
+        client.patch(
+            url + "/retention", headers=headers, json={"retain_original": True}
+        ).status_code
+        == 404
+    )
+    assert client.get(url + "/download").status_code == 404
+
+
+def test_purge_recreate_does_not_reuse_revision(client: TestClient) -> None:
+    headers = auth(client)
+    body = {"facts": {"summary": "Synthetic nurse"}, "preferences": {"desired_roles": ["Nursing"]}}
+    original = client.patch(
+        "/api/v1/profile", headers={**headers, "If-Match": '"0"'}, json=body
+    ).json()
+    assert original["revision"] == 1
+    assert (
+        client.post(
+            "/api/v1/profile/purge", headers=headers, json={"confirmation": "DELETE PROFILE"}
+        ).status_code
+        == 204
+    )
+    empty = client.get("/api/v1/profile").json()
+    assert empty["revision"] > original["revision"] and empty["revision_id"] is None
+    assert client.get("/api/v1/status").json()["profile_configured"] is False
+    fresh = client.patch(
+        "/api/v1/profile", headers={**headers, "If-Match": f'"{empty["revision"]}"'}, json=body
+    )
+    assert fresh.status_code == 200 and fresh.json()["revision"] > empty["revision"]
+    assert client.get("/api/v1/status").json()["profile_configured"] is True
+    assert (
+        client.patch(
+            "/api/v1/profile", headers={**headers, "If-Match": '"1"'}, json=body
+        ).status_code
+        == 409
+    )

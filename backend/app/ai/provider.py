@@ -17,7 +17,7 @@ from app.ai.contracts import TaskConfig, TaskKey
 from app.ai.models import InferenceCall, TaskRevision
 from app.config import get_settings
 from app.db import get_engine
-from app.profile_models import now
+from app.profile_models import Operation, now
 from app.services.operations import OperationError
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
@@ -266,6 +266,14 @@ def reserve(
     estimate = estimate.quantize(Decimal("0.00000001"), rounding=ROUND_CEILING)
     with Session(get_engine()) as db, db.begin():
         db.execute(text("SELECT pg_advisory_xact_lock(1012003)"))
+        if operation_id is not None:
+            operation = db.get(Operation, operation_id)
+            if operation is None or operation.state != "running":
+                raise OperationError(
+                    "operation_cancelled",
+                    "This operation is no longer running. No further AI request was sent.",
+                    blocked=True,
+                )
         _, budget = limits(db)
         unknown = db.scalar(
             select(InferenceCall.id)

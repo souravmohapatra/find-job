@@ -33,6 +33,7 @@ class ProfileView(ProfileSnapshot):
 
 
 class DraftView(BaseModel):
+    document_available: bool = False
     operation_id: UUID | None
     id: UUID
     document_id: UUID
@@ -61,3 +62,19 @@ class OperationView(BaseModel):
     error_message: str | None
     created_at: datetime
     finished_at: datetime | None
+
+
+class DocumentView(BaseModel):
+    id: UUID
+    media_type: str
+    size: int
+    status: str
+    retain_original: bool
+    created_at: datetime
+    approved_at: datetime | None
+    deleted_at: datetime | None
+
+
+class DocumentPage(BaseModel):
+    documents: list[DocumentView]
+    next_offset: int | None

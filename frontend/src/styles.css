@@ -761,3 +761,47 @@ details[open] > summary {
 .ai-settings form > button {
   justify-self: start;
 }
+.profile-data {
+  margin-top: 24px;
+}
+.profile-data p {
+  margin-bottom: 16px;
+}
+.document-list {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0;
+}
+.document-list li {
+  border-top: 1px solid var(--border);
+  padding: 24px 0;
+}
+.document-list h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.storage-choice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  margin-bottom: 12px;
+}
+.storage-choice input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.purge-panel {
+  border-top: 1px solid var(--border);
+  margin-top: 24px;
+  padding-top: 16px;
+}
+.purge-panel form {
+  display: grid;
+  gap: 16px;
+}
+.purge-panel button {
+  justify-self: start;
+}

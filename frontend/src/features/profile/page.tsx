@@ -1,3 +1,4 @@
+import { ProfileData } from './data';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, FileText, ArrowLeft } from 'lucide-react';
@@ -176,9 +177,11 @@ function DraftReview({
           ) : (
             <section className="panel">
               <h2>
-                {operation.data?.state === 'failed' || operation.data?.state === 'blocked'
-                  ? 'Your CV needs attention'
-                  : 'Preparing your profile'}
+                {operation.data?.state === 'cancelled'
+                  ? 'Analysis cancelled'
+                  : operation.data?.state === 'failed' || operation.data?.state === 'blocked'
+                    ? 'Your CV needs attention'
+                    : 'Preparing your profile'}
               </h2>
               <p role="status">
                 {operation.data?.progress ??
@@ -205,11 +208,13 @@ function DraftReview({
               )}
             </section>
           )}
-          <p className="document-link">
-            <a href={`/api/v1/profile/documents/${draft.data.document_id}/download`}>
-              Download original CV
-            </a>
-          </p>
+          {draft.data.document_available && (
+            <p className="document-link">
+              <a href={`/api/v1/profile/documents/${draft.data.document_id}/download`}>
+                Download original CV
+              </a>
+            </p>
+          )}
         </>
       )}
     </>
@@ -232,6 +237,13 @@ export function ProfilePage() {
     const found = current?.drafts.find((d) => d.document_id === result.resource_id);
     if (found) setSelected(found.id);
     setEditing(false);
+  }
+  async function purged() {
+    setNotice('Profile and CV data deleted. You can upload a new CV when ready.');
+    setSelected(null);
+    setEditing(false);
+    await client.invalidateQueries({ queryKey: ['profile'] });
+    await client.invalidateQueries({ queryKey: ['status'] });
   }
   async function saved() {
     setNotice('Profile saved. Future matching will use your reviewed experience and preferences.');
@@ -287,7 +299,7 @@ export function ProfilePage() {
             </>
           ) : (
             <>
-              {profile.data.revision > 0 && (
+              {profile.data.revision_id != null && (
                 <section className="panel">
                   <div className="section-heading">
                     <h2>Your reviewed profile</h2>
@@ -340,9 +352,11 @@ export function ProfilePage() {
                               ? 'Ready for review'
                               : draft.status === 'processing'
                                 ? 'Processing'
-                                : draft.status === 'failed'
-                                  ? 'Processing failed'
-                                  : 'Needs attention'}
+                                : draft.status === 'cancelled'
+                                  ? 'Analysis cancelled'
+                                  : draft.status === 'failed'
+                                    ? 'Processing failed'
+                                    : 'Needs attention'}
                             <small>{new Date(draft.created_at).toLocaleString()}</small>
                           </span>
                           <Button
@@ -360,6 +374,7 @@ export function ProfilePage() {
                   </ul>
                 </section>
               )}
+              <ProfileData csrf={csrf} onPurged={() => void purged()} />
               <UploadCv
                 csrf={csrf}
                 mock={status.data?.integration_mode === 'mock'}

@@ -6,7 +6,7 @@ from alembic.script import ScriptDirectory
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -16,7 +16,7 @@ from app.api.profiles import router as profile_router
 from app.auth import DB, Auth, authenticated
 from app.auth import router as auth_router
 from app.config import get_settings
-from app.profile_models import Profile
+from app.profile_models import Profile, ProfileRevision
 
 
 def create_app() -> FastAPI:
@@ -106,7 +106,13 @@ def create_app() -> FastAPI:
             "environment": settings.environment,
             "integration_mode": settings.integration_mode,
             "profile_configured": bool(
-                (profile := db.get(Profile, 1)) and profile.current_revision
+                (profile := db.get(Profile, 1))
+                and db.scalar(
+                    select(ProfileRevision.id).where(
+                        ProfileRevision.revision == profile.current_revision,
+                        ProfileRevision.profile_id == 1,
+                    )
+                )
             ),
             "phase": "profile_review",
         }

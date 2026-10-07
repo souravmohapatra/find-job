@@ -472,3 +472,25 @@ def test_contact_minimization_preserves_dates_and_line_boundaries() -> None:
     assert "2011\n2012\n2013" in result.text
     assert "+44" not in result.text and "email@example.test" not in result.text
     assert "[phone removed]" in result.text and "[email removed]" in result.text
+
+
+def test_cancelled_operation_cannot_reserve_another_request() -> None:
+    from app.services.operations import create_operation
+
+    identifier = configuration()
+    with Session(get_engine()) as db, db.begin():
+        operation = create_operation(db, "profile_ingest", "cancel-test", {})
+        operation.state = "cancelled"
+        operation_id = operation.id
+    with pytest.raises(OperationError) as captured:
+        provider.reserve(
+            identifier,
+            "profile_analysis",
+            TaskConfig(model="example/profile"),
+            operation_id,
+            "v1",
+            "v1",
+        )
+    assert captured.value.code == "operation_cancelled"
+    with Session(get_engine()) as db:
+        assert db.scalar(select(InferenceCall)) is None
