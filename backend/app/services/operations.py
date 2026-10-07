@@ -91,6 +91,10 @@ def process_operation(operation_id: UUID) -> None:
             from app.services.profiles import analyze_document
 
             result = analyze_document(UUID(parameters["document_id"]), operation_id, parameters)
+        elif kind == "source_collect":
+            from app.collection.runner import prepare_page
+
+            page_result = prepare_page(UUID(parameters["run_id"]), parameters["offset"])
         elif kind == "ai_validate":
             from app.ai.tasks import validate_task
 
@@ -114,6 +118,12 @@ def process_operation(operation_id: UUID) -> None:
                 from app.services.profiles import save_analysis
 
                 save_analysis(db, UUID(parameters["document_id"]), result)
+            if kind == "source_collect":
+                from app.collection.inventory import apply_page
+
+                apply_page(
+                    db, UUID(parameters["run_id"]), parameters["offset"], page_result, operation_id
+                )
             operation.state = "succeeded"
             operation.progress = "Ready for review" if kind == "profile_ingest" else "Completed"
             operation.finished_at = now()
@@ -153,6 +163,16 @@ def process_operation(operation_id: UUID) -> None:
                     document.status = operation.state
                 if draft and draft.status != "activated":
                     draft.status = "processing" if operation.state == "queued" else operation.state
+            if kind == "source_collect":
+                from app.collection.runner import record_failure
+
+                record_failure(
+                    db,
+                    UUID(parameters["run_id"]),
+                    failure.code,
+                    terminal=operation.state != "queued",
+                    retry_after=failure.retry_after,
+                )
             operation.progress = failure.message
             operation.lease_until = None
             operation.dispatched_at = None

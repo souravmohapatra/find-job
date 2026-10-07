@@ -41,7 +41,7 @@ def clean_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     with get_engine().begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE inference_calls, ai_task_revisions, ai_limits, sessions,"
+                "TRUNCATE companies, inference_calls, ai_task_revisions, ai_limits, sessions,"
                 " login_buckets, users, profile_revisions, profile_drafts, "
                 "profiles, documents, operation_intents, procrastinate_jobs CASCADE"
             )

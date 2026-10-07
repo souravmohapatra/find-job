@@ -60,6 +60,8 @@ def dispatch() -> int:
             queue = (
                 "ai"
                 if operation.kind in {"profile_ingest", "ai_validate", "ai_reconcile"}
+                else "fetch"
+                if operation.kind == "source_collect"
                 else "control"
             )
             # Execution locks + the business lease make duplicate dispatch harmless.
@@ -76,6 +78,10 @@ def dispatch() -> int:
 @app.periodic(cron="* * * * *")
 @app.task(name="jobfinder.dispatch", queue="control")
 def tick(timestamp: int) -> None:
+    from app.collection.inventory import schedule_due
+
+    with Session(get_engine()) as db, db.begin():
+        schedule_due(db)
     dispatch()
 
 
