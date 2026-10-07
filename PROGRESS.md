@@ -6,9 +6,27 @@ Updated: 2026-10-07.
 
 ## Current state
 
-Implementation is authorized and in progress. Backend dependencies are installed and locked through the approved package-registry Python index. Backend authentication/migration source passes static checks but runtime tests are blocked by host-to-container PostgreSQL handshake timeouts. The frontend authentication/navigation slice has passed mocked validation; the integrated foundation milestone and remaining product flows are still pending.
+Implementation is authorized and in progress. Backend dependencies are installed and locked through the approved package-registry Python index. Backend authentication/migration tests now pass using the explicitly authorized development-only host-network PostgreSQL override. Normal Docker bridge networking remains unverified on this host and must be validated on the deployment server. The frontend authentication/navigation slice has passed mocked validation; the integrated foundation milestone and remaining product flows are still pending.
 
-## Latest checkpoint: Docker/database blocker — 2026-10-07
+## Host-network development alternative — 2026-10-07 (verified)
+
+The user authorized a development-only PostgreSQL host-network alternative, with PostgreSQL explicitly restricted to 127.0.0.1:55439. Added compose.test.host.yaml as an opt-in override of the disposable test database, removing port mappings and setting both server and health-check ports explicitly. Normal compose.yaml deployment architecture is unchanged.
+
+Verified the merged configuration specifies host networking, no port mappings/networks, and the exact PostgreSQL listen address/port. Stopped the old disposable bridge test container to release the port, then ran:
+
+```sh
+docker compose -f compose.test.yaml -f compose.test.host.yaml up -d --wait --pull never db
+```
+
+The service became healthy from the cached PostgreSQL image. `ss -ltn 'sport = :55439'` showed only `127.0.0.1:55439`; Docker inspection returned network mode `host`. An authenticated host psycopg connection succeeded using the unchanged test endpoint. SQL verified listen_addresses=127.0.0.1, port=55439, server address=127.0.0.1 and current database=jobfinder_test. The first address assertion failed because PostgreSQL rendered the inet value as `127.0.0.1/32`; using `host(inet_server_addr())` normalized it and the corrected assertion passed. This was a verification-format issue, not a connection failure.
+
+`python3 scripts/test-backend.py -q` completed with **7 passed in 1.33s**, covering initial migration, private routes, owner creation protection, login/session/logout, CSRF/origin checks, session rotation/expiry, durable throttling and production security settings. The existing FastAPI/Starlette test-client integration emits an httpx deprecation warning; it did not fail the tests. Added explicit Alembic path splitting and a migration connection timeout so migration startup is bounded as well as application connections. Pinned the test database to the digest of the cached, tested image. Corrected the development secret generator to write a newline for newly created secrets; existing secrets were preserved.
+
+Final validation after the timeout/configuration cleanup: Ruff lint/format and strict mypy passed; backend tests passed again (7 passed, one upstream test-client deprecation warning, 2.73s). The digest-pinned merged Compose configuration passed inspection. Backend authentication/migration source, tests, test Compose files and development scripts are ready for the validated foundation commit; production Compose/image scaffolding remains outside that validated slice.
+
+The host-network alternative is now verified for development database access and the current backend tests. It does not fix the Docker bridge, validate service-to-service networking or prove production deployment/isolation. No VPN, firewall, host routes, global certificate settings or credentials were changed. The disposable database remains running in host-network mode for further development. Re-run normal Compose networking, private ingress and fetcher isolation checks on the intended Ubuntu server before deployment. The old bridge-blocker evidence below is retained as history; backend development is no longer blocked on it.
+
+## Previous checkpoint: Docker/database blocker — 2026-10-07
 
 Implementation is blocked on the development host's Docker database connectivity. This entry records the actual outputs from the preceding implementation checks; no new network probe or dependency retry was run for this documentation update.
 
@@ -95,7 +113,7 @@ Public official documentation and repository READMEs informed the plan. External
 
 ## Next authorized boundary
 
-Continue implementation milestone 1 after resolving the current test database connectivity blocker. Local implementation, dependency setup, container runtime and validation are authorized; retain the dependency-failure boundary in AGENTS.md.
+Continue implementation milestone 1 using the verified development-only host-network test override. Normal production-network validation remains deferred to the intended Ubuntu server. Local implementation, dependency setup, container runtime and validation are authorized; retain the dependency-failure boundary in AGENTS.md.
 
 ## Resume notes
 

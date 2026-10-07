@@ -2,7 +2,7 @@
 
 A locally hosted application that learns a candidate's profile from a CV, watches selected companies, builds a broad shortlist from editable preferences, and sends a configurable daily local ntfy summary at 19:00 by default. All collected company vacancies remain available for manual browsing.
 
-Status: implementation in progress. The frontend sign-in/navigation foundation passes mocked component and browser checks. Backend source exists but database runtime validation is blocked by the development host’s Docker routing. This is not yet a usable job finder or a verified deployment.
+Status: implementation in progress. The frontend sign-in/navigation foundation passes mocked component and browser checks. Backend authentication/migration tests pass against a development-only host-network PostgreSQL container; ordinary Compose networking still needs validation on the deployment host. This is not yet a usable job finder or a verified deployment.
 
 Selected foundation: React/TypeScript/Vite, FastAPI/Python, PostgreSQL with Procrastinate workers, OpenRouter with per-task model selection, and ntfy. Docker Compose on Ubuntu Server; LAN and tailnet access only.
 
@@ -42,4 +42,16 @@ npm --prefix frontend run test:e2e
 
 Browser tests use the installed Google Chrome channel and start a local-only Vite server. They mock API responses; they do not test real backend authentication. `npm --prefix frontend run dev` starts the frontend on 127.0.0.1:5173 and proxies API requests to 127.0.0.1:8000. It requires a working backend for interactive sign-in; no mock account or credentials are shipped in the app.
 
-Dependency failures must be reported without registry, certificate or network workarounds; see AGENTS.md. See PROGRESS.md for the exact backend blocker and remaining work before application startup.
+Dependency failures must be reported without registry, certificate or network workarounds; see AGENTS.md. See PROGRESS.md for current evidence and remaining work before application startup.
+
+## Backend tests on this development machine
+
+With the locked backend dependencies installed and the PostgreSQL test image already cached:
+
+```sh
+python3 scripts/init-dev.py
+docker compose -f compose.test.yaml -f compose.test.host.yaml up -d --wait --pull never db
+python3 scripts/test-backend.py -q
+```
+
+The override is Linux development-only. PostgreSQL listens on 127.0.0.1:55439; it does not use a port mapping. If switching from the regular bridge test setup, stop that test service first to release the same port. The test database is disposable (tmpfs); container recreation resets it. Secrets are generated locally only when missing, and the user's .env is preserved. Never point the test suite at production data. Omit the host override when validating standard Docker bridge networking on the deployment server.

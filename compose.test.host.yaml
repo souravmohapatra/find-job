@@ -1,0 +1,12 @@
+# Development-only Linux workaround for hosts where Docker bridge traffic is blocked.
+# Always combine with compose.test.yaml; never use for production.
+services:
+  db:
+    network_mode: host
+    ports: !reset []
+    command: [postgres, -c, listen_addresses=127.0.0.1, -c, port=55439]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -p, '55439', -U, jobfinder, -d, jobfinder_test]
+      interval: 2s
+      timeout: 3s
+      retries: 30

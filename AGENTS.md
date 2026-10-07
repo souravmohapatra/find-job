@@ -16,6 +16,10 @@ The user has authorized implementation, project-local dependency installation, c
 
 The original development machine used a restricted network. The user explicitly requires failed dependency syncs, fetches or pulls (including Python/uv/pip, npm and Docker images) to be treated as blockers. Stop the affected setup work and report the original error to the user. Do not retry with alternate registries, mirrors, certificate/trust changes, disabled TLS verification, proxy changes or other workarounds unless the user provides new instructions. Checking the result of an already-running operation is allowed; do not start a replacement attempt. The configured npm package proxy is allowed for package operations only and does not authorize unrelated internal browsing.
 
+## Development-only database networking exception
+
+The user authorized testing and using a Linux host-network PostgreSQL container for development because this machine's Docker bridge path is blocked. Apply compose.test.host.yaml only with compose.test.yaml. PostgreSQL itself must bind to 127.0.0.1:55439 only; host networking has no effective port mappings. Verify the actual listening address and database connection before calling this workaround successful. Do not extend host networking to production or fetcher isolation, or change VPN, firewall or host routes. Retain normal Compose networking in the deployment design and validate it on the intended Ubuntu server before deployment. This exception does not relax the dependency-failure rule.
+
 ## Product constraints
 
 - Docker Compose on Ubuntu Server, accessible only on the LAN and local tailnet. No public ingress or Tailscale Funnel. Follow DEPLOYMENT.md.

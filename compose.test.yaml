@@ -1,0 +1,19 @@
+name: jobfinder-test
+services:
+  db:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: jobfinder_test
+      POSTGRES_USER: jobfinder
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    ports: ['127.0.0.1:55439:5432']
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U jobfinder -d jobfinder_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+secrets:
+  db_password:
+    file: .secrets/test_db_password

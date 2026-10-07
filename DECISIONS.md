@@ -58,3 +58,7 @@ Updated: 2026-10-07. User requirements and delegated implementation decisions ar
 Exact per-task OpenRouter model IDs remain intentionally deferred. Actual deployment addresses, tailnet policy, owner credentials, OpenRouter key, Brave key if automatic discovery is wanted, and backup location remain to be supplied. Pin compatible dependencies during implementation and record task configuration/model provenance for each call. Model quality and performance, generic-site coverage, client certificate trust and notification behaviour require execution evidence. They have not been tested.
 
 Future scope includes additional ATS adapters, OCR, automatic company suggestions and multiple profiles. These are extensions, not blockers for the selected initial design.
+
+## Development environment exception — 2026-10-07
+
+User-approved: keep PostgreSQL and the existing backend test URL, using an opt-in Linux host-network test-container override with PostgreSQL restricted to 127.0.0.1:55439. This avoids the blocked development Docker bridge without changing VPN/host routes or application architecture. Verified host SQL access and the current backend test suite. Normal Compose topology remains the deployment design and requires validation on the intended Ubuntu server before release; this exception does not authorize host-network fetchers or production services.

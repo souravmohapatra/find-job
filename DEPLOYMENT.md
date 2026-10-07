@@ -69,3 +69,9 @@ Expose DB/migration readiness separately from degraded AI/search/notification st
 ## Installation parameters still needed
 
 Actual LAN IP/subnet and local DNS record; tailnet device name/access policy; owner credentials; OpenRouter key and task model IDs (models intentionally chosen later); optional Brave subscription/key; backup destination. Addresses and secrets are deployment values; model choice is the user-requested remaining design selection. No services are installed or running as a result of this document.
+
+## Development-only host-network PostgreSQL override
+
+On the current development machine, the Docker bridge path is unusable. The user approved `compose.test.host.yaml`, applied only with `compose.test.yaml`, to run the disposable PostgreSQL test service on Linux host networking. PostgreSQL itself is explicitly bound to `127.0.0.1:55439`; no port mapping is used. The host backend test URL and PostgreSQL architecture are unchanged. [Docker documents that host networking shares the host namespace and ignores published-port mappings](https://docs.docker.com/engine/network/drivers/host/).
+
+This is an opt-in development exception, not the deployment topology. Do not apply it to production, to fetchers, or to other services without a separate scoped decision. Before deployment on the intended Ubuntu server, validate ordinary Compose service DNS/connectivity, non-published database access, intended LAN/tailnet ingress, and fetcher/private-network isolation. Passing tests with this override does not satisfy those gates.
