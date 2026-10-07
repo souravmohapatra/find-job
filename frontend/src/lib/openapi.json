@@ -1990,6 +1990,140 @@
         }
       }
     },
+    "/api/v1/settings/notifications": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "Get Notifications",
+        "operationId": "get_notifications_api_v1_settings_notifications_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["notifications"],
+        "summary": "Update Notifications",
+        "operationId": "update_notifications_api_v1_settings_notifications_patch",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationPreferences"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "History",
+        "operationId": "history_api_v1_notifications_get",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestHistory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "summary": "Live",
@@ -2473,6 +2607,22 @@
         ],
         "title": "CallView"
       },
+      "CompanyCount": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "count"],
+        "title": "CompanyCount"
+      },
       "CompanyEdit": {
         "properties": {
           "label": {
@@ -2622,6 +2772,28 @@
         "required": ["label", "id", "revision", "resolution", "created_at"],
         "title": "CompanyView"
       },
+      "Counts": {
+        "properties": {
+          "new": {
+            "type": "integer",
+            "title": "New",
+            "default": 0
+          },
+          "baseline": {
+            "type": "integer",
+            "title": "Baseline",
+            "default": 0
+          },
+          "reassessment": {
+            "type": "integer",
+            "title": "Reassessment",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Counts"
+      },
       "Criterion": {
         "properties": {
           "id": {
@@ -2696,6 +2868,140 @@
         "type": "object",
         "required": ["preference_id", "status", "explanation"],
         "title": "CriterionResult"
+      },
+      "DigestHistory": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DigestView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["items", "next_before"],
+        "title": "DigestHistory"
+      },
+      "DigestSnapshot": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "companies": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CompanyCount"
+            },
+            "type": "object",
+            "title": "Companies"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/Example"
+            },
+            "type": "array",
+            "title": "Examples"
+          },
+          "source_errors": {
+            "type": "integer",
+            "title": "Source Errors",
+            "default": 0
+          },
+          "pending_operations": {
+            "type": "integer",
+            "title": "Pending Operations",
+            "default": 0
+          },
+          "assessment_errors": {
+            "type": "integer",
+            "title": "Assessment Errors",
+            "default": 0
+          },
+          "unresolved_companies": {
+            "type": "integer",
+            "title": "Unresolved Companies",
+            "default": 0
+          },
+          "matching_available": {
+            "type": "boolean",
+            "title": "Matching Available",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DigestSnapshot"
+      },
+      "DigestView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "local_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Local Date"
+          },
+          "cutoff": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cutoff"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "local_time": {
+            "type": "string",
+            "title": "Local Time"
+          },
+          "integration_mode": {
+            "type": "string",
+            "title": "Integration Mode"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["pending", "sending", "sent", "failed", "unknown", "skipped"],
+            "title": "State"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/DigestSnapshot"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "local_date",
+          "cutoff",
+          "timezone",
+          "local_time",
+          "integration_mode",
+          "state",
+          "snapshot",
+          "created_at"
+        ],
+        "title": "DigestView"
       },
       "DiscoveryCandidate": {
         "properties": {
@@ -3128,6 +3434,37 @@
         "type": "object",
         "required": ["span_id", "quote"],
         "title": "Evidence"
+      },
+      "Example": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "company": {
+            "type": "string",
+            "title": "Company"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["new", "baseline", "reassessment"],
+            "title": "Kind"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["match", "possible_match"],
+            "title": "Category"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["job_id", "title", "company", "kind", "category"],
+        "title": "Example"
       },
       "ExperienceSummary": {
         "properties": {
@@ -3567,6 +3904,95 @@
         "type": "object",
         "required": ["username", "password"],
         "title": "LoginRequest"
+      },
+      "NotificationPreferences": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Timezone",
+            "default": "Europe/London"
+          },
+          "local_time": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Local Time",
+            "default": "19:00"
+          },
+          "include_empty": {
+            "type": "boolean",
+            "title": "Include Empty",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NotificationPreferences"
+      },
+      "NotificationSettingsView": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Timezone",
+            "default": "Europe/London"
+          },
+          "local_time": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Local Time",
+            "default": "19:00"
+          },
+          "include_empty": {
+            "type": "boolean",
+            "title": "Include Empty",
+            "default": true
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "next_due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due At"
+          },
+          "next_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Date"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["revision", "next_due_at", "next_date"],
+        "title": "NotificationSettingsView"
       },
       "OperationAccepted": {
         "properties": {

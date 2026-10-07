@@ -70,18 +70,21 @@ def save(db: Session, parameters: dict[str, Any], operation_id: UUID, report: As
     preferences = Preferences.model_validate(profile.preferences)
     posting = Posting.model_validate(revision.posting)
     validate(report, preferences, evidence(facts, preferences, posting))
-    db.add(
-        JobAssessment(
-            job_revision_id=revision.id,
-            profile_revision_id=profile.id,
-            config_id=UUID(parameters["config_id"]),
-            policy_version=POLICY_VERSION,
-            integration_mode=parameters.get("integration_mode", "mock"),
-            category=category(report, preferences),
-            report=report.model_dump(mode="json"),
-            operation_id=operation_id,
-        )
+    assessment = JobAssessment(
+        job_revision_id=revision.id,
+        profile_revision_id=profile.id,
+        config_id=UUID(parameters["config_id"]),
+        policy_version=POLICY_VERSION,
+        integration_mode=parameters.get("integration_mode", "mock"),
+        category=category(report, preferences),
+        report=report.model_dump(mode="json"),
+        operation_id=operation_id,
     )
+    db.add(assessment)
+    db.flush()
+    from app.notifications.ledger import record
+
+    record(db, assessment)
 
 
 def expand(db: Session, parameters: dict[str, Any], batch_size: int = 100) -> int:

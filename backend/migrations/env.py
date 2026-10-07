@@ -4,6 +4,7 @@ from app.ai import models as ai_models  # noqa: F401
 from app.collection import models as collection_models  # noqa: F401
 from app.config import get_settings
 from app.db import Base
+from app.notifications import models as notification_models  # noqa: F401
 from sqlalchemy import create_engine, pool
 
 

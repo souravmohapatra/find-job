@@ -494,3 +494,19 @@ These are mocked-inference workflow checks, not real-source/model-quality or bro
 ### Notification calendar foundation
 
 Extraction phase saved as 2a99392. Added owner-timezone daily slot calculation, independent of the host timezone and collection interval. It chooses the first repeated occurrence and advances nonexistent minute-granular wall times to the first valid minute, including half-hour gaps and skipped dates. Future-slot calculation never schedules a downtime catch-up. Nine calendar tests passed (1.14s), covering London winter/summer/gap/fold, Lord Howe, Apia, owner-local dates and naive-time rejection. Ruff and strict mypy (53 files) pass. This is the calendar foundation only: persisted settings/slots, event and delivery ledgers, worker/API/UI wiring, ntfy transport and recovery remain to implement. No message was sent or dependency fetched. The complete goal remains active.
+
+### Notification ledger checkpoint
+
+Added migration 0013, a versioned owner schedule, assessment eligibility events committed with their assessments, unique local-date digest snapshots and durable event membership. Selection rechecks current job/profile/model/policy/mode and separates new, baseline and reassessment counts. Purge removes profile-derived digest content while retaining date receipts to prevent another digest that day. Initial ledger/assessment tests: 27 passed, 1 failed (13.99s, exit 1); the empty-summary fixture still had an active collection intent, so the summary correctly remained pending. Correcting that fixture. Initial lint/type checks found long generated lines and an untyped examples list; formatting/annotation fixes now pass Ruff and strict mypy (55 files). No delivery transport is implemented or message sent yet.
+
+
+Notification integration checkpoint: 41 targeted calendar/ledger/assessment tests passed (8.89s), including concurrent ticks, full membership beyond ten example titles, new-versus-reassessment labels, local-date receipts after purge, late assessment carry-forward and authenticated settings/history revision handling. The empty-summary fixture issue is corrected. Added normal-control-tick wiring coverage and started the complete backend suite. Ruff/format and strict mypy pass (57 application files); regenerated OpenAPI types and frontend TypeScript/Vite build pass (158.41 KB gzipped JavaScript, existing chunk warning). No UI controls or delivery transport are claimed yet, and no notification/provider request occurred.
+
+
+### Notification ledger validated locally
+
+Full backend suite passed 210 tests (87.91s). Final policy review then added suppression for jobs already reserved/sent/ambiguous in the same integration mode and explicit current assessment-error/unresolved-watch/matching-availability fields. The resulting targeted ledger suite passed all 22 tests (5.57s); the preceding category/ambiguity cases passed 21 tests (9.12s). New qualifying roles from prior not-match results receive a reassessment label; possible/strong changes for already-notified roles do not alert again. Current failures are selected by current assessment identity, not historical failed operations.
+
+Ruff lint/format and strict mypy pass (57 source files). Alembic consistency reports no new upgrade operations against migration 0013. OpenAPI types were regenerated and the final frontend TypeScript/Vite build passed (158.41 KB gzipped JavaScript). Existing Starlette/httpx deprecation and frontend chunk-size warnings remain. No dependency fetch, trust workaround, live AI request or ntfy publish occurred.
+
+Next implement delivery attempts, bounded retry, ambiguous-send recovery and definitely-unsent membership release, followed by portal configuration/history and transport validation. Digests currently persist as pending/skipped; notification transport is not yet functional. The original PLAN.md goal remains active, and the Python browser dependency certificate blocker is unchanged.

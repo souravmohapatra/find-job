@@ -70,3 +70,12 @@ Owner-triggered deletion must remove related live documents, drafts, facts, and 
 Profile deletion preserves a monotonically increasing revision counter as a tombstone, rather than resetting it to zero. A missing current revision row / null `revision_id` means there is no active profile, even when the counter is positive. Consumers must check actual revision existence, not counter truthiness. This prevents old editor tabs from matching a revision number reused after purge and recreation. Document removal cancels pending/running ingestion and discards later results; inference admission rechecks operation state before a further request. An already dispatched external request cannot be recalled.
 
 Billing resolution records `cost_source` (provider, owner_verified, rejected, or legacy_reported) and `accounted_at`. Owner verification requires explicit confirmation and only updates unresolved requests; it does not enqueue inference. Resolved costs remain attributed to the original request day.
+
+
+## Implemented notification ledger
+
+`notification_settings` is the versioned owner singleton: disabled until configured, Europe/London, 19:00 and empty summaries enabled by default. It persists the next local date and UTC cutoff. `notification_events` records each qualifying assessment once in the assessment transaction; first qualifying assessments are labelled new or baseline, and subsequent assessments of that job in the same integration mode are labelled reassessment. Current-version checks happen again at cutoff. A job already reserved, sent or ambiguous in the same integration mode is withheld from subsequent automatic digests, so category/model changes do not alert on it again. Newly qualifying, previously unsent roles can enter the separately labelled reassessment summary.
+
+`notification_digests` has a unique local-date key, captured schedule/mode/profile and a summary snapshot. `notification_digest_items` retains all event memberships, including those beyond the ten displayed example titles. Each event's digest_id reserves it against another automatic digest. Delivery completion, definitely-unsent release and unknown-send handling are the next implementation step; the ledger currently does not publish.
+
+Profile purge cascades eligibility events/items and clears profile-derived digest snapshots. It preserves the digest date receipt with a null profile reference and skips pending content, preventing a second digest on that date. Sent external messages cannot be recalled by deleting local profile data.

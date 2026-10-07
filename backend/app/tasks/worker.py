@@ -81,6 +81,7 @@ def dispatch() -> int:
 def tick(timestamp: int) -> None:
     from app.collection.discovery import schedule
     from app.collection.inventory import schedule_due
+    from app.notifications.ledger import schedule as schedule_digest
     from app.services.matching import reconcile
 
     with Session(get_engine()) as db, db.begin():
@@ -91,6 +92,8 @@ def tick(timestamp: int) -> None:
         schedule(db)
     with Session(get_engine()) as db, db.begin():
         reconcile(db)
+    with Session(get_engine()) as db, db.begin():
+        schedule_digest(db)
     dispatch()
 
 

@@ -64,3 +64,10 @@ Company watches accept a label, optional public website and a 1–720 hour inter
 POST /jobs/{id}/reassess captures current profile/model/policy/mode and job revisions, including closed jobs. It joins queued/running or already-successful work and requeues a failed/blocked/cancelled current operation only on an explicit request. Optional Idempotency-Key records a durable receipt: repeating it returns the original operation without another attempt, even after terminal failure or changed configuration; using the same key for another job returns 409. A new explicit retry uses a new key. Missing profile/model mapping returns 409.
 
 PUT /jobs/{id}/feedback accepts value (relevant/not_relevant), optional reason (maximum 2,000 characters), and expected_revision (0 for first save). Conflicts return 409. Job detail includes the latest feedback; feedback never changes the AI verdict, shortlist or preferences. Profile purge also deletes feedback and cached job explanations/notes.
+
+
+## Implemented notification configuration and history
+
+Authenticated GET/PATCH `/settings/notifications` exposes enabled, IANA timezone, local_time (HH:MM), include_empty, revision and persisted next date/UTC instant. PATCH requires the quoted If-Match revision (0 before first save); conflicts preserve stored settings. Changing timezone/time/enabled computes a future slot, while changing only the empty-summary preference preserves the scheduled instant. Saving settings does not publish a message.
+
+GET `/notifications` returns digest snapshots and states, with descending unique local-date pagination (`before=YYYY-MM-DD`, limit 1–100). Snapshots distinguish new/baseline/reassessment counts, company totals, up to ten examples and source-error/pending-operation counts, current assessment failures, unresolved watches and matching availability. These ledger APIs are implemented; portal controls, publish testing, delivery transport and manual resend are still pending.

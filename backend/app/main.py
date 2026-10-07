@@ -13,6 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from app.api.ai import router as ai_router
 from app.api.companies import router as companies_router
 from app.api.jobs import router as jobs_router
+from app.api.notifications import router as notifications_router
 from app.api.operations import router as operations_router
 from app.api.profiles import router as profile_router
 from app.auth import DB, Auth, authenticated
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(profile_router, prefix="/api/v1")
     app.include_router(operations_router, prefix="/api/v1")
+    app.include_router(notifications_router, prefix="/api/v1")
 
     @app.get("/api/v1/health/live")
     def live() -> dict[str, str]:

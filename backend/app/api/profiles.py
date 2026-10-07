@@ -482,6 +482,15 @@ def purge_profile(body: PurgeConfirmation, session: Auth, db: DB) -> None:
     from app.collection.models import JobFeedback
 
     db.execute(delete(JobFeedback))
+    from app.notifications.models import Digest
+
+    # Keep the local-date receipt so purge cannot permit a second daily digest.
+    db.execute(update(Digest).where(Digest.profile_revision_id.is_not(None)).values(snapshot={}))
+    db.execute(
+        update(Digest)
+        .where(Digest.profile_revision_id.is_not(None), Digest.state == "pending")
+        .values(state="skipped")
+    )
     db.execute(delete(ProfileRevision))
     profile.current_revision += 1
     db.commit()

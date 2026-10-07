@@ -589,6 +589,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/settings/notifications': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Notifications */
+    get: operations['get_notifications_api_v1_settings_notifications_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update Notifications */
+    patch: operations['update_notifications_api_v1_settings_notifications_patch'];
+    trace?: never;
+  };
+  '/api/v1/notifications': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** History */
+    get: operations['history_api_v1_notifications_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/health/live': {
     parameters: {
       query?: never;
@@ -815,6 +850,13 @@ export interface components {
        */
       created_at: string;
     };
+    /** CompanyCount */
+    CompanyCount: {
+      /** Label */
+      label: string;
+      /** Count */
+      count: number;
+    };
     /** CompanyEdit */
     CompanyEdit: {
       /** Label */
@@ -882,6 +924,24 @@ export interface components {
        */
       created_at: string;
     };
+    /** Counts */
+    Counts: {
+      /**
+       * New
+       * @default 0
+       */
+      new: number;
+      /**
+       * Baseline
+       * @default 0
+       */
+      baseline: number;
+      /**
+       * Reassessment
+       * @default 0
+       */
+      reassessment: number;
+    };
     /** Criterion */
     Criterion: {
       /**
@@ -931,6 +991,83 @@ export interface components {
        * @default false
        */
       comparable: boolean;
+    };
+    /** DigestHistory */
+    DigestHistory: {
+      /** Items */
+      items: components['schemas']['DigestView'][];
+      /** Next Before */
+      next_before: string | null;
+    };
+    /** DigestSnapshot */
+    DigestSnapshot: {
+      counts?: components['schemas']['Counts'];
+      /** Companies */
+      companies?: {
+        [key: string]: components['schemas']['CompanyCount'];
+      };
+      /** Examples */
+      examples?: components['schemas']['Example'][];
+      /**
+       * Source Errors
+       * @default 0
+       */
+      source_errors: number;
+      /**
+       * Pending Operations
+       * @default 0
+       */
+      pending_operations: number;
+      /**
+       * Assessment Errors
+       * @default 0
+       */
+      assessment_errors: number;
+      /**
+       * Unresolved Companies
+       * @default 0
+       */
+      unresolved_companies: number;
+      /**
+       * Matching Available
+       * @default false
+       */
+      matching_available: boolean;
+    };
+    /** DigestView */
+    DigestView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Local Date
+       * Format: date
+       */
+      local_date: string;
+      /**
+       * Cutoff
+       * Format: date-time
+       */
+      cutoff: string;
+      /** Timezone */
+      timezone: string;
+      /** Local Time */
+      local_time: string;
+      /** Integration Mode */
+      integration_mode: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown' | 'skipped';
+      snapshot: components['schemas']['DigestSnapshot'];
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /** DiscoveryCandidate */
     DiscoveryCandidate: {
@@ -1107,6 +1244,28 @@ export interface components {
       span_id: string;
       /** Quote */
       quote: string;
+    };
+    /** Example */
+    Example: {
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /** Title */
+      title: string;
+      /** Company */
+      company: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'new' | 'baseline' | 'reassessment';
+      /**
+       * Category
+       * @enum {string}
+       */
+      category: 'match' | 'possible_match';
     };
     /** ExperienceSummary */
     ExperienceSummary: {
@@ -1305,6 +1464,58 @@ export interface components {
       username: string;
       /** Password */
       password: string;
+    };
+    /** NotificationPreferences */
+    NotificationPreferences: {
+      /**
+       * Enabled
+       * @default false
+       */
+      enabled: boolean;
+      /**
+       * Timezone
+       * @default Europe/London
+       */
+      timezone: string;
+      /**
+       * Local Time
+       * @default 19:00
+       */
+      local_time: string;
+      /**
+       * Include Empty
+       * @default true
+       */
+      include_empty: boolean;
+    };
+    /** NotificationSettingsView */
+    NotificationSettingsView: {
+      /**
+       * Enabled
+       * @default false
+       */
+      enabled: boolean;
+      /**
+       * Timezone
+       * @default Europe/London
+       */
+      timezone: string;
+      /**
+       * Local Time
+       * @default 19:00
+       */
+      local_time: string;
+      /**
+       * Include Empty
+       * @default true
+       */
+      include_empty: boolean;
+      /** Revision */
+      revision: number;
+      /** Next Due At */
+      next_due_at: string | null;
+      /** Next Date */
+      next_date: string | null;
     };
     /** OperationAccepted */
     OperationAccepted: {
@@ -3037,6 +3248,93 @@ export interface operations {
           'application/json': {
             [key: string]: string;
           };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_notifications_api_v1_settings_notifications_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['NotificationSettingsView'];
+        };
+      };
+    };
+  };
+  update_notifications_api_v1_settings_notifications_patch: {
+    parameters: {
+      query?: never;
+      header?: {
+        'If-Match'?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['NotificationPreferences'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['NotificationSettingsView'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  history_api_v1_notifications_get: {
+    parameters: {
+      query?: {
+        before?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DigestHistory'];
         };
       };
       /** @description Validation Error */
