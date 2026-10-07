@@ -86,4 +86,5 @@ class InventoryPage(BaseModel):
     postings: list[Posting]
     complete: bool
     next_offset: int | None = None
+    next_urls: list[str] = Field(default_factory=list, max_length=200)
     issues: list[str] = Field(default_factory=list)

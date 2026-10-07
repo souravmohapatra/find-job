@@ -65,6 +65,7 @@ class CollectionRun(Base):
     source_revision: Mapped[int]
     state: Mapped[str] = mapped_column(String(20), default="collecting")
     next_offset: Mapped[int] = mapped_column(default=0)
+    frontier: Mapped[list[str]] = mapped_column(JSONB, default=list)
     pages: Mapped[int] = mapped_column(default=0)
     issues: Mapped[list[str]] = mapped_column(JSONB, default=list)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

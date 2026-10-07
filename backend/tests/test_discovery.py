@@ -215,7 +215,7 @@ def test_unknown_redirect_caps_and_generic_candidates_are_not_verified_jobs(
         run = db.scalar(select(DiscoveryRun))
         assert run.cursor == 21 and len(run.frontier) == 21
         assert "discovery_page_limit" in run.issues and "unverified_redirect" in run.issues
-        assert run.candidates and "generic_collection_pending" in run.issues
+        assert run.candidates and "job_employer_unverified" in run.issues
         assert db.scalar(select(Source)) is None
 
 

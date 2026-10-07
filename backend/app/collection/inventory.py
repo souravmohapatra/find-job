@@ -57,7 +57,11 @@ def begin_run(db: Session, source: Source) -> Operation | None:
         active.state = "expired"
         active.finished_at = clock
         active.issues = [*active.issues, "epoch_expired_or_source_changed"]
-    run = CollectionRun(source_id=source.id, source_revision=source.revision)
+    run = CollectionRun(
+        source_id=source.id,
+        source_revision=source.revision,
+        frontier=[source.url] if source.adapter == "generic_http" else [],
+    )
     db.add(run)
     db.flush()
     # Stable 0–59 second jitter spreads watches without replaying downtime intervals.
@@ -135,6 +139,21 @@ def apply_page(
     if run.next_offset != offset:
         raise ValueError("Unexpected inventory continuation.")
     issues = set(run.issues) | set(page.issues)
+    if source.adapter == "generic_http":
+        frontier = list(run.frontier)
+        seen_urls = set(frontier)
+        for url in page.next_urls:
+            if url in seen_urls:
+                continue
+            if len(frontier) >= 200:
+                issues.add("generic_page_limit")
+                break
+            frontier.append(url)
+            seen_urls.add(url)
+        run.frontier = frontier
+        page = page.model_copy(
+            update={"next_offset": offset + 1 if offset + 1 < len(frontier) else None}
+        )
     for posting in page.postings:
         external_key = key(posting.external_id)
         association = db.scalar(
@@ -146,6 +165,9 @@ def apply_page(
         if association and db.get(Observation, (run_id, association.id)):
             # Offset pagination shifted or repeated a prior page: never infer omissions.
             issues.add("unstable_pagination")
+            if source.adapter == "generic_http":
+                # Repeated cards/details must not create contradictory revisions in one epoch.
+                continue
         job = (
             db.get(Job, association.job_id)
             if association
@@ -213,6 +235,16 @@ def apply_page(
     run.state = "complete" if page.complete and not run.issues else "partial"
     run.finished_at = now()
     source.last_error = None if run.state == "complete" else "incomplete_inventory"
+    if (
+        source.adapter == "generic_http"
+        and db.scalar(
+            select(Observation.association_id).where(Observation.run_id == run_id).limit(1)
+        )
+        is not None
+    ):
+        # Non-exhaustive sites may never have a fully complete run. End their initial
+        # observed baseline so later discoveries do not remain baseline forever.
+        source.baseline_at = source.baseline_at or now()
     if run.state != "complete":
         return
     source.last_success_at = now()

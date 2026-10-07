@@ -112,7 +112,9 @@ export function DiscoveryHistory({
                 <p>
                   {candidate.status === 'needs_identity_review'
                     ? 'Search result · company identity unverified'
-                    : 'Possible job page · not yet collected'}
+                    : candidate.status === 'source_collection_queued'
+                      ? 'Verified job page · monitoring source saved'
+                      : 'Possible job page · employer evidence needs review'}
                 </p>
                 {candidate.status === 'needs_identity_review' &&
                   run.company_revision === company.revision && (

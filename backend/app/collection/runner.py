@@ -6,10 +6,11 @@ from uuid import UUID
 
 from app.collection.ats import decode_page, request_url
 from app.collection.contracts import Adapter, InventoryPage
-from app.collection.models import CollectionRun, Company, Source
+from app.collection.models import CollectionRun, Company, Observation, Source
 from app.db import get_engine
 from app.profile_models import now
 from app.services.operations import OperationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
@@ -46,17 +47,33 @@ def prepare_page(run_id: UUID, offset: int) -> InventoryPage:
                 retryable=True,
                 retry_after=max(1, int((source.cooldown_until - now()).total_seconds())),
             )
-        if source.adapter not in {"greenhouse", "lever", "ashby"}:
+        if source.adapter == "generic_http":
+            generic_config = (
+                run.frontier[offset],
+                source.config["company_name"],
+                source.config["website"],
+            )
+        else:
+            generic_config = None
+        if source.adapter not in {"greenhouse", "lever", "ashby", "generic_http"}:
             raise OperationError(
                 "adapter_unavailable", "This source adapter is not configured.", blocked=True
             )
         adapter = cast(Adapter, source.adapter)
-        url = request_url(
-            adapter,
-            source.config["board"],
-            region=source.config.get("region", "global"),
-            offset=offset,
+        url = (
+            source.url
+            if generic_config
+            else request_url(
+                adapter,
+                source.config["board"],
+                region=source.config.get("region", "global"),
+                offset=offset,
+            )
         )
+    if generic_config:
+        from app.collection.generic_inventory import collect
+
+        return collect(*generic_config)
     return decode_page(adapter, fetch_json(url), offset=offset)
 
 
@@ -79,6 +96,14 @@ def record_failure(
     if retry_after:
         source.cooldown_until = now() + timedelta(seconds=retry_after)
     if terminal:
+        if (
+            source.adapter == "generic_http"
+            and db.scalar(
+                select(Observation.association_id).where(Observation.run_id == run_id).limit(1)
+            )
+            is not None
+        ):
+            source.baseline_at = source.baseline_at or now()
         run.state = "failed"
         run.finished_at = now()
         run.issues = sorted(set(run.issues) | {code})

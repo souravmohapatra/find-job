@@ -3665,6 +3665,10 @@
             "type": "string",
             "title": "Adapter"
           },
+          "authoritative": {
+            "type": "boolean",
+            "title": "Authoritative"
+          },
           "url": {
             "type": "string",
             "title": "Url"
@@ -3739,6 +3743,7 @@
           "id",
           "company_id",
           "adapter",
+          "authoritative",
           "url",
           "revision",
           "enabled",

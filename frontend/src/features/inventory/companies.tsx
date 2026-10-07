@@ -274,7 +274,10 @@ function SourceCard({ source }: { source: Schemas['SourceView'] }) {
   });
   return (
     <article className="panel">
-      <h3>{source.adapter} source</h3>
+      <h3>{source.adapter === 'generic_http' ? 'Website' : source.adapter} source</h3>
+      {!source.authoritative && (
+        <p>Partial site coverage. Missing listings alone will not close roles.</p>
+      )}
       <a href={source.url} target="_blank" rel="noopener noreferrer">
         Open source
       </a>

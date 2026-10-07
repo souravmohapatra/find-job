@@ -36,6 +36,7 @@ class Target(BaseModel):
 
 class DiscoveryResult(BaseModel):
     links: list[Target] = Field(default_factory=list)
+    generic_url: str | None = None
     verified: Target | None = None
     candidates: list[dict[str, Any]] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
@@ -153,6 +154,7 @@ def prepare(run_id: UUID, cursor: int) -> DiscoveryResult:
             raise OperationError("discovery_superseded", "This discovery run is no longer current.")
         item = Target.model_validate(run.frontier[cursor])
         website = company.website
+        company_name = company.label
     if item.query is not None:
         from app.collection.search import search
 
@@ -197,11 +199,22 @@ def prepare(run_id: UUID, cursor: int) -> DiscoveryResult:
                 "employer": found.employer_name,
                 "source_url": found.source_url,
                 "evidence_path": found.evidence_path,
-                "status": "generic_collection_pending",
+                "status": "needs_employer_review",
             }
         )
     if page.candidates:
-        result.issues.append("generic_collection_pending")
+        from app.collection.generic_inventory import inventory
+
+        verified_jobs = inventory(page, company_name, website)
+        if verified_jobs.postings:
+            result.generic_url = document.url
+            accepted = {posting.url for posting in verified_jobs.postings}
+            for evidence in result.candidates:
+                if evidence["url"] in accepted:
+                    evidence["status"] = "source_collection_queued"
+            result.issues.extend(verified_jobs.issues)
+        else:
+            result.issues.extend(verified_jobs.issues)
     for entry in page.links:
         proposed = target(entry.url, depth=item.depth + 1, linked_from=document.url)
         if proposed.adapter:
@@ -257,6 +270,30 @@ def apply(db: Session, run_id: UUID, cursor: int, result: DiscoveryResult) -> No
                         "linked_from": item.linked_from,
                         "network_verified": True,
                         "discovery_run_id": str(run.id),
+                    },
+                )
+            )
+    if result.generic_url and company.website:
+        existing = db.scalar(
+            select(Source).where(
+                Source.company_id == company.id, Source.identity == key(result.generic_url)
+            )
+        )
+        if existing is None:
+            db.add(
+                Source(
+                    company_id=company.id,
+                    identity=key(result.generic_url),
+                    adapter="generic_http",
+                    url=result.generic_url,
+                    authoritative=False,
+                    config={"company_name": company.label, "website": company.website},
+                    interval_hours=company.interval_hours,
+                    evidence={
+                        "basis": "official_page_and_employer",
+                        "network_verified": True,
+                        "discovery_run_id": str(run.id),
+                        "coverage": "single_page",
                     },
                 )
             )

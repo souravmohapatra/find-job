@@ -56,6 +56,7 @@ class SourceView(BaseModel):
     id: UUID
     company_id: UUID
     adapter: str
+    authoritative: bool
     url: str
     revision: int
     enabled: bool

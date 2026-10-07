@@ -1348,6 +1348,8 @@ export interface components {
       company_id: string;
       /** Adapter */
       adapter: string;
+      /** Authoritative */
+      authoritative: boolean;
       /** Url */
       url: string;
       /** Revision */
