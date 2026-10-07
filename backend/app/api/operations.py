@@ -45,6 +45,13 @@ def retry_operation(operation_id: UUID, session: Auth, db: DB) -> dict[str, str]
         draft = db.scalar(select(ProfileDraft).where(ProfileDraft.document_id == identifier))
         if document is None or document.deleted_at or draft is None:
             raise problem(409, "document_deleted", "Upload a new document to continue.")
+        if operation.parameters.get("ai_config_id") is None:
+            from app.ai.configuration import capture
+
+            operation.parameters = {
+                **operation.parameters,
+                "ai_config_id": capture(db, "profile_analysis"),
+            }
         document.status = "queued"
         draft.status = "processing"
     operation.state = "queued"

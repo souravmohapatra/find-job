@@ -19,7 +19,18 @@ def redacted_spans(spans: list[Span]) -> list[Span]:
     result: list[Span] = []
     for span in spans:
         text = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email removed]", span.text)
-        text = re.sub(r"(?<!\w)(?:\+?\d[\s().-]*){9,15}(?!\w)", "[phone removed]", text)
+        parts = re.split(
+            r"(\b(?:19|20)\d{2}[-/]\d{2}(?:[-/]\d{2})?\b"
+            r"|\b(?:19|20)\d{2}[ \t]*[-–][ \t]*(?:19|20)\d{2}\b)",
+            text,
+        )
+        # Do not join digits across document lines or mistake employment dates for phones.
+        text = "".join(
+            part
+            if index % 2
+            else re.sub(r"(?<!\w)(?:\+?\d[ \t().-]*){9,15}(?!\w)", "[phone removed]", part)
+            for index, part in enumerate(parts)
+        )
         text = re.sub(
             r"https?://(?:www\.)?(?:linkedin\.com/in|facebook\.com|instagram\.com)/\S+",
             "[personal link removed]",
@@ -32,7 +43,9 @@ def redacted_spans(spans: list[Span]) -> list[Span]:
     return result
 
 
-def analyze_document(document_id: UUID) -> dict[str, Any]:
+def analyze_document(
+    document_id: UUID, operation_id: UUID | None = None, parameters: dict[str, Any] | None = None
+) -> dict[str, Any]:
     with Session(get_engine()) as db:
         document = db.get(Document, document_id)
         if document is None or document.deleted_at:
@@ -64,18 +77,24 @@ def analyze_document(document_id: UUID) -> dict[str, Any]:
         )
     spans = [Span.model_validate(span) for span in data["spans"]]
     safe_spans = redacted_spans(spans)
+    parameters = parameters or {}
     if get_settings().integration_mode == "live":
-        raise OperationError(
-            "configuration_required",
-            "Configure the profile analysis model before processing this CV.",
-            blocked=True,
+        if not parameters.get("consent") or parameters.get("integration_mode") != "live":
+            raise OperationError(
+                "consent_required",
+                "Upload again and consent to external analysis before processing in live mode.",
+                blocked=True,
+            )
+        from app.ai.profile import analyze_profile
+
+        facts = analyze_profile(safe_spans, parameters.get("ai_config_id"), operation_id)
+    else:
+        # Explicit mock, derived only from submitted text; no invented career or qualifications.
+        first = next((span for span in safe_spans if "removed]" not in span.text), safe_spans[0])
+        facts = Facts(
+            summary=first.text[:5000],
+            summary_evidence=[Evidence(span_id=first.id, quote=first.text[:1000])],
         )
-    # Explicit mock, derived only from the submitted text. It invents no career or qualifications.
-    first = next((span for span in safe_spans if "removed]" not in span.text), safe_spans[0])
-    facts = Facts(
-        summary=first.text[:5000],
-        summary_evidence=[Evidence(span_id=first.id, quote=first.text[:1000])],
-    )
     validate_evidence(facts, safe_spans)
     return {
         "spans": [span.model_dump() for span in safe_spans],

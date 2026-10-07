@@ -12,11 +12,20 @@ from sqlalchemy.orm import Session
 
 
 class OperationError(Exception):
-    def __init__(self, code: str, message: str, *, blocked: bool = False, retryable: bool = False):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        blocked: bool = False,
+        retryable: bool = False,
+        retry_after: int | None = None,
+    ):
         self.code = code
         self.message = message
         self.blocked = blocked
         self.retryable = retryable
+        self.retry_after = retry_after
         super().__init__(message)
 
 
@@ -72,7 +81,7 @@ def process_operation(operation_id: UUID) -> None:
             return
         operation.state = "running"
         operation.lease_token = token
-        operation.lease_until = now() + timedelta(minutes=5)
+        operation.lease_until = now() + timedelta(minutes=10)
         operation.attempts += 1
         operation.progress = "Processing"
         kind = operation.kind
@@ -81,7 +90,15 @@ def process_operation(operation_id: UUID) -> None:
         if kind == "profile_ingest":
             from app.services.profiles import analyze_document
 
-            result = analyze_document(UUID(parameters["document_id"]))
+            result = analyze_document(UUID(parameters["document_id"]), operation_id, parameters)
+        elif kind == "ai_validate":
+            from app.ai.tasks import validate_task
+
+            validate_task(parameters["task"], UUID(parameters["config_id"]), operation_id)
+        elif kind == "ai_reconcile":
+            from app.ai.tasks import reconcile_call
+
+            reconcile_call(UUID(parameters["call_id"]))
         else:
             raise OperationError(
                 "handler_pending",
@@ -98,7 +115,7 @@ def process_operation(operation_id: UUID) -> None:
 
                 save_analysis(db, UUID(parameters["document_id"]), result)
             operation.state = "succeeded"
-            operation.progress = "Ready for review"
+            operation.progress = "Ready for review" if kind == "profile_ingest" else "Completed"
             operation.finished_at = now()
             operation.lease_until = None
             operation.error_code = operation.error_message = None
@@ -119,7 +136,9 @@ def process_operation(operation_id: UUID) -> None:
             operation.state = "blocked" if failure.blocked else "failed"
             if failure.retryable and operation.attempts < 3:
                 operation.state = "queued"
-                operation.available_at = now() + timedelta(seconds=30 * 2**operation.attempts)
+                operation.available_at = now() + timedelta(
+                    seconds=max(30 * 2**operation.attempts, failure.retry_after or 0)
+                )
             operation.error_code, operation.error_message = failure.code, failure.message
             if kind == "profile_ingest":
                 from app.profile_models import Document, ProfileDraft

@@ -96,3 +96,11 @@ For each newly observed non-baseline job, create at most one new-job event when 
 ## Validation scope
 
 Use a small set of understandable synthetic examples to check broad inclusion, clear function exclusions, uncertainty and no invented experience. Include transferable roles at roughly the 30-point boundary. No 90% precision requirement, extensive tuning dataset or model-ranking exercise is part of v1. Keep schema, evidence, privacy, task-routing and reliability checks; these verify correct operation rather than optimize suitability judgments. Exact OpenRouter models remain undecided.
+
+## Implemented configuration defaults and current limits
+
+The first provider slice is implemented and tested with synthetic HTTP transport only. Immutable task revisions capture model/routing/limits; uploads also capture mode and consent, preventing a later mock-to-live switch from sending an unconsented document. Changed matching settings persist a reassessment intent, whose inventory handler is still pending.
+
+Selected editable routing ceilings are USD 20/million input tokens, USD 60/million output tokens, and USD 0 per-request fee. These are conservative maximum prices for routing/reservation, not claimed prices for any chosen model. Reserve the full configured input/output caps, check endpoint capabilities and pricing before dispatch, enforce the ceilings in `provider.max_price`, and preserve data-collection denial/ZDR settings for explicit fallbacks. Cache read/write prices must fit the input ceiling too. See [OpenRouter price-routing documentation](https://openrouter.ai/docs/guides/routing/provider-selection).
+
+A conservative UTF-8 byte bound including schema/framing rejects oversized inputs visibly instead of truncating them; chunk/merge is not implemented. A second complete-input request is the only schema-repair attempt. Unknown billing (including transport timeouts) pauses further requests until reconciled; Retry-After cooldowns are persisted for explicit rate-limit responses. A key-level spending limit remains necessary as the external billing backstop. Generation metadata reconciliation is available through the API; UI recovery and verified resolution without a generation ID remain follow-up work.

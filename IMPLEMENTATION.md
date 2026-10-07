@@ -89,4 +89,4 @@ The browser polls operation status every two seconds during active user work and
 6. ntfy summaries/digests, delivery state, restart recovery, backups, and LAN/tailnet deployment checks.
 7. Execute quality evaluation and accessibility/security/recovery gates in VALIDATION.md before describing the app as usable.
 
-Each milestone should deliver a reviewable working slice. Milestone 1 is in progress; its frontend portion has mocked validation, while backend runtime and Compose acceptance remain pending. See PROGRESS.md for current evidence.
+Each milestone should deliver a reviewable working slice. Authentication, profile workflow and task-model Settings have local API/database/worker/browser validation. Normal Compose deployment acceptance and the remaining inventory/matching/notification milestones are pending. See PROGRESS.md for current evidence.

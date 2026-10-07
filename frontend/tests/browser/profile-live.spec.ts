@@ -60,3 +60,44 @@ test('real upload → worker parsing → review → saved preferences', async ({
   expect(data.preferences.criteria[0].strength).toBe('preferred');
   expect(data.preferences.relevance_threshold).toBe(30);
 });
+
+test('real model settings → reload → explicit mock validation', async ({ page }) => {
+  await page.goto('/settings');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  const task = page
+    .locator('.ai-task')
+    .filter({ has: page.getByRole('heading', { name: 'CV analysis', exact: true }) });
+  await task.getByLabel('Model ID', { exact: true }).fill('example/synthetic');
+  await task.getByLabel('Use only zero data retention endpoints').check();
+  await task.getByRole('button', { name: 'Save cv analysis' }).click();
+  await expect(task.getByText('Model settings saved.')).toBeVisible();
+  await expect(task.getByRole('button', { name: 'Check mock configuration' })).toBeEnabled();
+  await page.reload();
+  await expect(task.getByLabel('Model ID', { exact: true })).toHaveValue('example/synthetic');
+  await expect(task.getByLabel('Use only zero data retention endpoints')).toBeChecked();
+  await task.getByRole('button', { name: 'Check mock configuration' }).click();
+  await expect(
+    task.getByText('Mock configuration checked. No provider request was made.'),
+  ).toBeVisible({ timeout: 90000 });
+  await page.getByLabel('Estimated spend per day (USD)').fill('3');
+  await page.getByRole('button', { name: 'Save daily limits' }).click();
+  await expect(page.getByText('Daily limits saved.')).toBeVisible();
+  await task.getByText('Advanced model settings', { exact: true }).click();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/settings-${width}.png`, fullPage: true });
+  }
+  const settings = await (await page.request.get('/api/v1/settings/ai')).json();
+  expect(settings.tasks[0].validation_state).toBe('mock_only');
+  expect(settings.tasks[0].config.temperature).toBeNull();
+  expect(settings.tasks[1].config.model).toBeNull();
+  expect(Number(settings.limits.daily_usd)).toBe(3);
+  const usage = await (await page.request.get('/api/v1/settings/ai/usage')).json();
+  expect(usage.tasks.every((task: { calls_today: number }) => task.calls_today === 0)).toBe(true);
+});

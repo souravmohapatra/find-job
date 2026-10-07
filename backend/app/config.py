@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
     secure_cookies: bool = True
     session_days: int = 7
+    openrouter_key_file: Path = Path("/run/secrets/openrouter_api_key")
     document_dir: Path = Path("/data/documents")
 
     @model_validator(mode="after")

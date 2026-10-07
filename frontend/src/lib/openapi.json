@@ -5,6 +5,295 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/settings/ai": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "Get Ai",
+        "operationId": "get_ai_api_v1_settings_ai_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettingsView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["settings"],
+        "summary": "Update Ai",
+        "operationId": "update_ai_api_v1_settings_ai_patch",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettingsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/ai/limits": {
+      "patch": {
+        "tags": ["settings"],
+        "summary": "Update Limits",
+        "operationId": "update_limits_api_v1_settings_ai_limits_patch",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiLimits-Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettingsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/ai/validate": {
+      "post": {
+        "tags": ["settings"],
+        "summary": "Validate Config",
+        "operationId": "validate_config_api_v1_settings_ai_validate_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/ai/usage": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "Get Usage",
+        "operationId": "get_usage_api_v1_settings_ai_usage_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Usage Api V1 Settings Ai Usage Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/ai/usage/{call_id}/reconcile": {
+      "post": {
+        "tags": ["settings"],
+        "summary": "Reconcile Usage",
+        "operationId": "reconcile_usage_api_v1_settings_ai_usage__call_id__reconcile_post",
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/ai/models": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "Get Models",
+        "operationId": "get_models_api_v1_settings_ai_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Models Api V1 Settings Ai Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": ["authentication"],
@@ -652,6 +941,85 @@
         "type": "object",
         "required": ["draft_version", "reviewed"],
         "title": "Activation"
+      },
+      "AiLimits-Input": {
+        "properties": {
+          "daily_calls": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Daily Calls",
+            "default": 500
+          },
+          "daily_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$"
+              }
+            ],
+            "title": "Daily Usd",
+            "default": "5"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AiLimits"
+      },
+      "AiLimits-Output": {
+        "properties": {
+          "daily_calls": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Daily Calls",
+            "default": 500
+          },
+          "daily_usd": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$",
+            "title": "Daily Usd",
+            "default": "5"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AiLimits"
+      },
+      "AiSettingsView": {
+        "properties": {
+          "integration_mode": {
+            "type": "string",
+            "title": "Integration Mode"
+          },
+          "key_configured": {
+            "type": "boolean",
+            "title": "Key Configured"
+          },
+          "limits_revision": {
+            "type": "integer",
+            "title": "Limits Revision"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/AiLimits-Output"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskView"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["integration_mode", "key_configured", "limits_revision", "limits", "tasks"],
+        "title": "AiSettingsView"
       },
       "Body_upload_document_api_v1_profile_documents_post": {
         "properties": {
@@ -1391,6 +1759,310 @@
         "type": "object",
         "required": ["id", "text"],
         "title": "Span"
+      },
+      "TaskConfig-Input": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "fallback_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Fallback Models"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Providers"
+          },
+          "zdr": {
+            "type": "boolean",
+            "title": "Zdr",
+            "default": false
+          },
+          "input_tokens": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Input Tokens",
+            "default": 16000
+          },
+          "output_tokens": {
+            "type": "integer",
+            "maximum": 32000.0,
+            "minimum": 256.0,
+            "title": "Output Tokens",
+            "default": 4000
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 10.0,
+            "title": "Timeout Seconds",
+            "default": 120
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "prompt_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$"
+              }
+            ],
+            "title": "Prompt Price",
+            "default": "20"
+          },
+          "completion_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$"
+              }
+            ],
+            "title": "Completion Price",
+            "default": "60"
+          },
+          "request_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$"
+              }
+            ],
+            "title": "Request Price",
+            "default": "0"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TaskConfig"
+      },
+      "TaskConfig-Output": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "fallback_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Fallback Models"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Providers"
+          },
+          "zdr": {
+            "type": "boolean",
+            "title": "Zdr",
+            "default": false
+          },
+          "input_tokens": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Input Tokens",
+            "default": 16000
+          },
+          "output_tokens": {
+            "type": "integer",
+            "maximum": 32000.0,
+            "minimum": 256.0,
+            "title": "Output Tokens",
+            "default": 4000
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 10.0,
+            "title": "Timeout Seconds",
+            "default": 120
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "prompt_price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$",
+            "title": "Prompt Price",
+            "default": "20"
+          },
+          "completion_price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$",
+            "title": "Completion Price",
+            "default": "60"
+          },
+          "request_price": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,6}0*$",
+            "title": "Request Price",
+            "default": "0"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TaskConfig"
+      },
+      "TaskUpdate": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "enum": ["profile_analysis", "job_extraction", "job_matching"],
+            "title": "Task"
+          },
+          "config": {
+            "$ref": "#/components/schemas/TaskConfig-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["task", "config"],
+        "title": "TaskUpdate"
+      },
+      "TaskView": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "enum": ["profile_analysis", "job_extraction", "job_matching"],
+            "title": "Task"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "config": {
+            "$ref": "#/components/schemas/TaskConfig-Output"
+          },
+          "validation_state": {
+            "type": "string",
+            "title": "Validation State"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["task", "revision", "config", "validation_state", "error_code"],
+        "title": "TaskView"
+      },
+      "ValidateRequest": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "enum": ["profile_analysis", "job_extraction", "job_matching"],
+            "title": "Task"
+          },
+          "acknowledge_cost": {
+            "type": "boolean",
+            "title": "Acknowledge Cost",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["task"],
+        "title": "ValidateRequest"
       },
       "ValidationError": {
         "properties": {

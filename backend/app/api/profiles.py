@@ -3,6 +3,7 @@ import os
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
+from app.ai.configuration import capture
 from app.api.contracts import DraftView, OperationAccepted, ProfileSnapshot, ProfileView
 from app.auth import DB, Auth
 from app.config import get_settings
@@ -135,7 +136,12 @@ def upload_document(
         db,
         "profile_ingest",
         idempotency_key or str(uuid4()),
-        {"document_id": str(identifier)},
+        {
+            "document_id": str(identifier),
+            "ai_config_id": capture(db, "profile_analysis"),
+            "consent": consent,
+            "integration_mode": get_settings().integration_mode,
+        },
         fingerprint,
     )
     if operation.parameters["document_id"] != str(identifier):

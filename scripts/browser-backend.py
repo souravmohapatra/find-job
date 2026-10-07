@@ -59,7 +59,8 @@ with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
     with get_engine().begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE sessions, login_buckets, users, profile_revisions, "
+                "TRUNCATE inference_calls, ai_task_revisions, ai_limits, sessions,"
+                " login_buckets, users, profile_revisions, "
                 "profile_drafts, profiles, documents, operation_intents, procrastinate_jobs CASCADE"
             )
         )

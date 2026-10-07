@@ -1,12 +1,21 @@
 from alembic import context
 from app import models, profile_models  # noqa: F401
+from app.ai import models as ai_models  # noqa: F401
 from app.config import get_settings
 from app.db import Base
 from sqlalchemy import create_engine, pool
 
+
+def include_name(name, type_, parent_names):
+    return not (type_ == "table" and name.startswith("procrastinate_"))
+
+
 if context.is_offline_mode():
     context.configure(
-        url=get_settings().sqlalchemy_url(), target_metadata=Base.metadata, literal_binds=True
+        url=get_settings().sqlalchemy_url(),
+        target_metadata=Base.metadata,
+        literal_binds=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -18,6 +27,8 @@ else:
         hide_parameters=True,
     )
     with engine.connect() as connection:
-        context.configure(connection=connection, target_metadata=Base.metadata)
+        context.configure(
+            connection=connection, target_metadata=Base.metadata, include_name=include_name
+        )
         with context.begin_transaction():
             context.run_migrations()

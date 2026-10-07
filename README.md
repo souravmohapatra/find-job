@@ -2,7 +2,7 @@
 
 A locally hosted application that learns a candidate's profile from a CV, watches selected companies, builds a broad shortlist from editable preferences, and sends a configurable daily local ntfy summary at 19:00 by default. All collected company vacancies remain available for manual browsing.
 
-Status: implementation in progress. Authentication and the CV upload/review/preferences workflow have local PostgreSQL/worker/browser validation with mock inference. Company monitoring, live AI configuration, matching and notifications are still in progress. Ordinary Compose networking still needs validation on the deployment host. This is not yet a usable job finder or a verified deployment.
+Status: implementation in progress. Authentication and the CV upload/review/preferences workflow have local PostgreSQL/worker/browser validation with mock inference. Per-task OpenRouter Settings and the provider integration have mocked transport validation. Company monitoring, matching and notifications are still in progress; no live model acceptance has run. Ordinary Compose networking still needs validation on the deployment host. This is not yet a usable job finder or a verified deployment.
 
 Selected foundation: React/TypeScript/Vite, FastAPI/Python, PostgreSQL with Procrastinate workers, OpenRouter with per-task model selection, and ntfy. Docker Compose on Ubuntu Server; LAN and tailnet access only.
 
@@ -61,3 +61,11 @@ The override is Linux development-only. PostgreSQL listens on 127.0.0.1:55439; i
 `npm --prefix frontend run test:integration` starts a real loopback API and worker plus Vite, using a dedicated disposable `jobfinder_test_browser` database on the running test PostgreSQL instance. It seeds only a synthetic owner/CV and tears down its server processes afterwards. This command never uses the real CV supplied for local parsing checks. `npm --prefix frontend run generate:api` regenerates frontend types from FastAPI's OpenAPI schema.
 
 For an optional real local parsing check, run `backend/.venv/bin/python scripts/check-cv.py /path/to/cv.pdf`. It prints aggregate metrics only, retains no extracted text, and makes no AI request. Put additional real examples in ignored `private-fixtures/`; use synthetic inputs in committed tests.
+
+## AI settings during development
+
+Settings now supports independent CV-analysis, job-extraction and job-matching model IDs, optional explicit fallbacks/provider slugs, zero data retention routing, per-task token/timeout/price ceilings and daily budgets. Models start unset. Saving settings never makes a paid request. The separate validation action uses synthetic input; mock mode labels it mock-only and makes no provider call. It is not a model-quality evaluation.
+
+Live mode reads the key from `JOBFINDER_OPENROUTER_KEY_FILE` (default `/run/secrets/openrouter_api_key`). Supply an absolute server-side path to a private key file; never enter the key into the browser or commit it. The current development browser fixture always sets mock mode. Live testing remains deferred until the owner supplies a key and selects task models.
+
+Usage records store configuration/generation/model IDs, token counts and cost metadata, not CV prompts or model responses. Unknown-cost requests retain their reservation and pause that task. The reconciliation API can retrieve billing metadata when a generation ID is known. Recovery UI and verified manual billing resolution for requests without a generation ID remain unfinished; do not discard their reservations.

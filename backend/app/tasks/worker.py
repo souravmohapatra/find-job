@@ -57,7 +57,11 @@ def dispatch() -> int:
             .limit(100)
         )
         for operation in pending:
-            queue = "ai" if operation.kind == "profile_ingest" else "control"
+            queue = (
+                "ai"
+                if operation.kind in {"profile_ingest", "ai_validate", "ai_reconcile"}
+                else "control"
+            )
             # Execution locks + the business lease make duplicate dispatch harmless.
             # Do not use a queueing lock: it can conflict with recovery of a stalled
             # "doing" job when a replacement "todo" job already exists.
@@ -89,9 +93,11 @@ async def recover_stalled_jobs() -> int:
 @app.periodic(cron="*/5 * * * *")
 @app.task(name="jobfinder.maintenance", queue="control")
 async def maintenance(timestamp: int) -> None:
+    from app.ai.provider import recover_reservations
     from app.services.retention import expire_approved_documents
 
     await recover_stalled_jobs()
+    await asyncio.to_thread(recover_reservations)
     await asyncio.to_thread(expire_approved_documents)
 
 

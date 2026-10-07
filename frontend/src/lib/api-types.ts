@@ -4,6 +4,109 @@
  */
 
 export interface paths {
+  '/api/v1/settings/ai': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Ai */
+    get: operations['get_ai_api_v1_settings_ai_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update Ai */
+    patch: operations['update_ai_api_v1_settings_ai_patch'];
+    trace?: never;
+  };
+  '/api/v1/settings/ai/limits': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update Limits */
+    patch: operations['update_limits_api_v1_settings_ai_limits_patch'];
+    trace?: never;
+  };
+  '/api/v1/settings/ai/validate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Validate Config */
+    post: operations['validate_config_api_v1_settings_ai_validate_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/settings/ai/usage': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Usage */
+    get: operations['get_usage_api_v1_settings_ai_usage_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/settings/ai/usage/{call_id}/reconcile': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reconcile Usage */
+    post: operations['reconcile_usage_api_v1_settings_ai_usage__call_id__reconcile_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/settings/ai/models': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Models */
+    get: operations['get_models_api_v1_settings_ai_models_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/auth/login': {
     parameters: {
       query?: never;
@@ -271,6 +374,44 @@ export interface components {
       draft_version: number;
       /** Reviewed */
       reviewed: boolean;
+    };
+    /** AiLimits */
+    'AiLimits-Input': {
+      /**
+       * Daily Calls
+       * @default 500
+       */
+      daily_calls: number;
+      /**
+       * Daily Usd
+       * @default 5
+       */
+      daily_usd: number | string;
+    };
+    /** AiLimits */
+    'AiLimits-Output': {
+      /**
+       * Daily Calls
+       * @default 500
+       */
+      daily_calls: number;
+      /**
+       * Daily Usd
+       * @default 5
+       */
+      daily_usd: string;
+    };
+    /** AiSettingsView */
+    AiSettingsView: {
+      /** Integration Mode */
+      integration_mode: string;
+      /** Key Configured */
+      key_configured: boolean;
+      /** Limits Revision */
+      limits_revision: number;
+      limits: components['schemas']['AiLimits-Output'];
+      /** Tasks */
+      tasks: components['schemas']['TaskView'][];
     };
     /** Body_upload_document_api_v1_profile_documents_post */
     Body_upload_document_api_v1_profile_documents_post: {
@@ -577,6 +718,139 @@ export interface components {
       /** Paragraph */
       paragraph?: number | null;
     };
+    /** TaskConfig */
+    'TaskConfig-Input': {
+      /** Model */
+      model?: string | null;
+      /** Fallback Models */
+      fallback_models?: string[];
+      /** Providers */
+      providers?: string[];
+      /**
+       * Zdr
+       * @default false
+       */
+      zdr: boolean;
+      /**
+       * Input Tokens
+       * @default 16000
+       */
+      input_tokens: number;
+      /**
+       * Output Tokens
+       * @default 4000
+       */
+      output_tokens: number;
+      /**
+       * Timeout Seconds
+       * @default 120
+       */
+      timeout_seconds: number;
+      /** Temperature */
+      temperature?: number | null;
+      /** Reasoning Effort */
+      reasoning_effort?: ('low' | 'medium' | 'high') | null;
+      /**
+       * Prompt Price
+       * @default 20
+       */
+      prompt_price: number | string;
+      /**
+       * Completion Price
+       * @default 60
+       */
+      completion_price: number | string;
+      /**
+       * Request Price
+       * @default 0
+       */
+      request_price: number | string;
+    };
+    /** TaskConfig */
+    'TaskConfig-Output': {
+      /** Model */
+      model?: string | null;
+      /** Fallback Models */
+      fallback_models?: string[];
+      /** Providers */
+      providers?: string[];
+      /**
+       * Zdr
+       * @default false
+       */
+      zdr: boolean;
+      /**
+       * Input Tokens
+       * @default 16000
+       */
+      input_tokens: number;
+      /**
+       * Output Tokens
+       * @default 4000
+       */
+      output_tokens: number;
+      /**
+       * Timeout Seconds
+       * @default 120
+       */
+      timeout_seconds: number;
+      /** Temperature */
+      temperature?: number | null;
+      /** Reasoning Effort */
+      reasoning_effort?: ('low' | 'medium' | 'high') | null;
+      /**
+       * Prompt Price
+       * @default 20
+       */
+      prompt_price: string;
+      /**
+       * Completion Price
+       * @default 60
+       */
+      completion_price: string;
+      /**
+       * Request Price
+       * @default 0
+       */
+      request_price: string;
+    };
+    /** TaskUpdate */
+    TaskUpdate: {
+      /**
+       * Task
+       * @enum {string}
+       */
+      task: 'profile_analysis' | 'job_extraction' | 'job_matching';
+      config: components['schemas']['TaskConfig-Input'];
+    };
+    /** TaskView */
+    TaskView: {
+      /**
+       * Task
+       * @enum {string}
+       */
+      task: 'profile_analysis' | 'job_extraction' | 'job_matching';
+      /** Revision */
+      revision: number;
+      config: components['schemas']['TaskConfig-Output'];
+      /** Validation State */
+      validation_state: string;
+      /** Error Code */
+      error_code: string | null;
+    };
+    /** ValidateRequest */
+    ValidateRequest: {
+      /**
+       * Task
+       * @enum {string}
+       */
+      task: 'profile_analysis' | 'job_extraction' | 'job_matching';
+      /**
+       * Acknowledge Cost
+       * @default false
+       */
+      acknowledge_cost: boolean;
+    };
     /** ValidationError */
     ValidationError: {
       /** Location */
@@ -599,6 +873,208 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  get_ai_api_v1_settings_ai_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiSettingsView'];
+        };
+      };
+    };
+  };
+  update_ai_api_v1_settings_ai_patch: {
+    parameters: {
+      query?: never;
+      header?: {
+        'If-Match'?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TaskUpdate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiSettingsView'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  update_limits_api_v1_settings_ai_limits_patch: {
+    parameters: {
+      query?: never;
+      header?: {
+        'If-Match'?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiLimits-Input'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiSettingsView'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  validate_config_api_v1_settings_ai_validate_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'Idempotency-Key'?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ValidateRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OperationAccepted'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_usage_api_v1_settings_ai_usage_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  reconcile_usage_api_v1_settings_ai_usage__call_id__reconcile_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'Idempotency-Key'?: string | null;
+      };
+      path: {
+        call_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OperationAccepted'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_models_api_v1_settings_ai_models_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   login_api_v1_auth_login_post: {
     parameters: {
       query?: never;
