@@ -37,6 +37,7 @@ class Target(BaseModel):
 class DiscoveryResult(BaseModel):
     links: list[Target] = Field(default_factory=list)
     generic_url: str | None = None
+    generic_jobs_verified: bool = True
     verified: Target | None = None
     candidates: list[dict[str, Any]] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
@@ -215,6 +216,32 @@ def prepare(run_id: UUID, cursor: int) -> DiscoveryResult:
             result.issues.extend(verified_jobs.issues)
         else:
             result.issues.extend(verified_jobs.issues)
+    elif (
+        page.visible_text.strip()
+        and not any(target(link.url).adapter for link in page.links)
+        and (
+            re.search(
+                r"/(?:careers?|jobs?|vacancies|opportunities|join-us|work-with-us)/?$",
+                urlsplit(document.url).path,
+                re.I,
+            )
+            or re.search(r"^(?:jobs|careers)\.", urlsplit(document.url).hostname or "", re.I)
+            or (urlsplit(document.url).hostname or "").endswith(".jobs")
+        )
+    ):
+        # A company-owned careers URL is a monitoring source, not proof of any vacancy.
+        result.generic_url = document.url
+        result.generic_jobs_verified = False
+        result.candidates.append(
+            {
+                "url": document.url,
+                "title": "Careers page awaiting job verification",
+                "employer": company_name,
+                "source_url": document.url,
+                "evidence_path": "official_careers_url",
+                "status": "source_collection_queued",
+            }
+        )
     for entry in page.links:
         proposed = target(entry.url, depth=item.depth + 1, linked_from=document.url)
         if proposed.adapter:
@@ -290,7 +317,10 @@ def apply(db: Session, run_id: UUID, cursor: int, result: DiscoveryResult) -> No
                     config={"company_name": company.label, "website": company.website},
                     interval_hours=company.interval_hours,
                     evidence={
-                        "basis": "official_page_and_employer",
+                        "basis": "official_page_and_employer"
+                        if result.generic_jobs_verified
+                        else "official_careers_page",
+                        "jobs_verified": result.generic_jobs_verified,
                         "network_verified": True,
                         "discovery_run_id": str(run.id),
                         "coverage": "single_page",

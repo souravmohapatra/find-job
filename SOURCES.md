@@ -91,4 +91,13 @@ Collection epochs persist a deduplicated frontier for same-site next links and r
 
 ## Unstructured extraction contract checkpoint
 
-`app.ai.extraction` defines the independent job_extraction task schema and versioned prompt. It accepts bounded page text and observed public links only. Each returned field is an exact span quotation; generated URLs and ungrounded claims fail validation, and closed/uncertain roles remain distinct. This verifies provenance, not semantic truth: model quality still needs representative live evaluation. Queue/persistence integration and promotion of only open, employer-verified outputs are unfinished. Browser dependency setup is currently blocked by the package-proxy certificate error recorded in PROGRESS.md.
+`app.ai.extraction` defines the independent job_extraction task schema and versioned prompt. It accepts bounded page text and observed public links only. Each returned field is an exact span quotation; generated URLs and ungrounded claims fail validation, and closed/uncertain roles remain distinct. This verifies provenance, not semantic truth: model quality still needs representative live evaluation. Queue/persistence integration now promotes only open outputs with exact normalized employer attribution, as described below. Browser dependency setup is currently blocked by the package-proxy certificate error recorded in PROGRESS.md.
+
+
+## Persisted unstructured extraction
+
+An official careers URL without structured jobs can register a non-authoritative generic source; registration does not establish that vacancies exist. A direct supported ATS link takes precedence over this plain-page fallback. Collection stores bounded visible text (40,000 characters maximum), observed public links and the deterministic page result before handing off to the AI queue. Oversized text remains explicitly incomplete rather than being silently truncated. The fetcher receives no inference key or profile.
+
+The snapshot captures task configuration and mock/live mode. AI completion rechecks source revision, source/company enabled state, the latest collection epoch (maximum age 24 hours), page offset and worker lease before advancing the persisted frontier. Exact source quotations and observed URLs are required. Only open roles with matching employer evidence enter inventory; uncertain/closed/misattributed results remain coverage issues. AI pages are always non-authoritative and cannot close jobs by absence.
+
+Transient retries and explicit operation retries reuse the original snapshot without refetch. An explicit retry may supply a previously missing task configuration but does not replace an already captured model. Starting a newer company check supersedes the old snapshot. Public-page snapshots expire after seven days in bounded maintenance batches; normalized inventory and operation history remain. Model quality, browser-rendered sources and real network isolation still require acceptance.

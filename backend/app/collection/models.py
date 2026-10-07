@@ -217,3 +217,16 @@ class JobFeedback(Base):
     reason: Mapped[str] = mapped_column(String(2000), default="")
     revision: Mapped[int] = mapped_column(default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PageExtraction(Base):
+    __tablename__ = "page_extractions"
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("collection_runs.id"), primary_key=True)
+    offset: Mapped[int] = mapped_column(primary_key=True)
+    operation_id: Mapped[UUID] = mapped_column(ForeignKey("operation_intents.id"), unique=True)
+    config_id: Mapped[UUID | None] = mapped_column(ForeignKey("ai_task_revisions.id"))
+    integration_mode: Mapped[str] = mapped_column(String(10))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    inventory: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

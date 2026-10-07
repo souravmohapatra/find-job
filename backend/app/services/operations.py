@@ -109,6 +109,12 @@ def process_operation(operation_id: UUID) -> None:
             from app.collection.runner import prepare_page
 
             page_result = prepare_page(UUID(parameters["run_id"]), parameters["offset"])
+        elif kind == "job_extract":
+            from app.collection.extraction import prepare as prepare_extraction
+
+            extracted_result = prepare_extraction(
+                UUID(parameters["run_id"]), parameters["offset"], operation_id
+            )
         elif kind == "ai_validate":
             from app.ai.tasks import validate_task
 
@@ -178,10 +184,31 @@ def process_operation(operation_id: UUID) -> None:
                     if not sources:
                         check_progress = "No source is configured. Discover or add a job source."
             if kind == "source_collect":
+                from app.collection.extraction_input import PreparedPage
                 from app.collection.inventory import apply_page
 
-                apply_page(
-                    db, UUID(parameters["run_id"]), parameters["offset"], page_result, operation_id
+                if isinstance(page_result, PreparedPage) and page_result.extraction is not None:
+                    from app.collection.extraction import stage
+
+                    stage(db, UUID(parameters["run_id"]), parameters["offset"], page_result)
+                    check_progress = "Page saved; job extraction queued."
+                else:
+                    apply_page(
+                        db,
+                        UUID(parameters["run_id"]),
+                        parameters["offset"],
+                        page_result,
+                        operation_id,
+                    )
+            if kind == "job_extract":
+                from app.collection.extraction import save as save_extraction
+
+                save_extraction(
+                    db,
+                    UUID(parameters["run_id"]),
+                    parameters["offset"],
+                    operation_id,
+                    extracted_result,
                 )
             operation.state = "succeeded"
             operation.progress = check_progress or (
@@ -230,6 +257,17 @@ def process_operation(operation_id: UUID) -> None:
                 record_failure(
                     db,
                     UUID(parameters["run_id"]),
+                    failure.code,
+                    terminal=operation.state != "queued",
+                    retry_after=failure.retry_after,
+                )
+            if kind == "job_extract":
+                from app.collection.extraction import failure as extraction_failure
+
+                extraction_failure(
+                    db,
+                    UUID(parameters["run_id"]),
+                    parameters["offset"],
                     failure.code,
                     terminal=operation.state != "queued",
                     retry_after=failure.retry_after,

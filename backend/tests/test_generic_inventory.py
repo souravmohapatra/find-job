@@ -2,10 +2,19 @@ import json
 from uuid import UUID
 
 import pytest
-from app.collection import discovery, generic_inventory
+from app.ai.extraction import Extraction
+from app.collection import discovery, extraction, generic_inventory
 from app.collection.generic import parse_page
 from app.collection.inventory import begin_run
-from app.collection.models import Company, DiscoveryRun, Job, JobRevision, JobSource, Source
+from app.collection.models import (
+    Company,
+    DiscoveryRun,
+    Job,
+    JobRevision,
+    JobSource,
+    PageExtraction,
+    Source,
+)
 from app.db import get_engine
 from app.fetcher.contracts import FetchResult
 from app.profile_models import Operation
@@ -57,6 +66,7 @@ def test_employer_identity_and_expiry_are_required_before_inventory():
 
 
 def test_generic_discovery_source_worker_revision_and_omission_safety(monkeypatch):
+    monkeypatch.setattr(extraction, "extract", lambda *args: Extraction(coverage="uncertain"))
     content = [html(posting())]
 
     def fetch(request):
@@ -102,6 +112,10 @@ def test_generic_discovery_source_worker_revision_and_omission_safety(monkeypatc
         with Session(get_engine()) as db, db.begin():
             identifier = begin_run(db, db.get(Source, source_id, with_for_update=True)).id
         process_operation(identifier)
+        with Session(get_engine()) as db, db.begin():
+            ai_id = begin_run(db, db.get(Source, source_id)).id
+            assert db.get(Operation, ai_id).kind == "job_extract"
+        process_operation(ai_id)
     with Session(get_engine()) as db:
         assert db.get(Job, job_id).availability == "active"
         assert db.scalar(select(JobSource)).omissions == 0
@@ -136,6 +150,7 @@ def test_generic_frontier_survives_restart_deduplicates_links_and_finishes_basel
     from app.collection.models import CollectionRun
     from app.profile_models import now
 
+    monkeypatch.setattr(extraction, "extract", lambda *args: Extraction(coverage="uncertain"))
     calls = []
 
     def fetch(request):
@@ -177,6 +192,11 @@ def test_generic_frontier_survives_restart_deduplicates_links_and_finishes_basel
         second_id = second.id
     process_operation(first_id)
     process_operation(second_id)
+    with Session(get_engine()) as db:
+        snapshot = db.get(PageExtraction, (run_id, 1))
+        assert snapshot is not None
+        ai_id = snapshot.operation_id
+    process_operation(ai_id)
     with Session(get_engine()) as db, db.begin():
         epoch = db.get(CollectionRun, run_id)
         source = db.get(Source, source_id)

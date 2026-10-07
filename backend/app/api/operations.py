@@ -54,6 +54,10 @@ def retry_operation(operation_id: UUID, session: Auth, db: DB) -> dict[str, str]
             }
         document.status = "queued"
         draft.status = "processing"
+    if operation.kind == "job_extract":
+        from app.collection.extraction import supply_missing_configuration
+
+        supply_missing_configuration(db, operation)
     operation.state = "queued"
     operation.attempts = 0
     operation.available_at = now()

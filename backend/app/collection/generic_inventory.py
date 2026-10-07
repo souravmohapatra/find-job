@@ -4,6 +4,7 @@ import re
 import unicodedata
 
 from app.collection.contracts import InventoryPage
+from app.collection.extraction_input import PreparedPage, PublicPage
 from app.collection.generic import GenericPage, JobCandidate, parse_page
 from app.collection.transport import fetch_document
 from app.fetcher.contracts import FetchRequest
@@ -84,4 +85,12 @@ def collect(url: str, company_name: str, website: str) -> InventoryPage:
     if len(set(links)) > 200:
         result.issues.append("generic_link_limit")
         result.complete = False
+    if not page.candidates and page.visible_text.strip():
+        if len(page.visible_text) > 40_000:
+            result.issues.append("extraction_input_limit")
+        else:
+            return PreparedPage(
+                **result.model_dump(),
+                extraction=PublicPage(url=document.url, text=page.visible_text, links=page.links),
+            )
     return result

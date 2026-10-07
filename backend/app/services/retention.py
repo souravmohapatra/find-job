@@ -31,3 +31,22 @@ def expire_approved_documents() -> int:
             document.deleted_at = now()
             document.status = "expired"
         return len(documents)
+
+
+def expire_page_extractions() -> int:
+    """Discard public-page diagnostic snapshots after seven days; epochs expire after one day."""
+    from app.collection.models import PageExtraction
+
+    with Session(get_engine()) as db, db.begin():
+        db.execute(text("SELECT pg_advisory_xact_lock(1012001)"))
+        rows = list(
+            db.scalars(
+                select(PageExtraction)
+                .where(PageExtraction.created_at < now() - timedelta(days=7))
+                .order_by(PageExtraction.created_at)
+                .limit(100)
+            )
+        )
+        for row in rows:
+            db.delete(row)
+        return len(rows)

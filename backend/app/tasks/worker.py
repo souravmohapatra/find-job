@@ -59,7 +59,8 @@ def dispatch() -> int:
         for operation in pending:
             queue = (
                 "ai"
-                if operation.kind in {"profile_ingest", "ai_validate", "ai_reconcile", "job_assess"}
+                if operation.kind
+                in {"profile_ingest", "ai_validate", "ai_reconcile", "job_assess", "job_extract"}
                 else "fetch"
                 if operation.kind in {"source_collect", "discovery_step"}
                 else "control"
@@ -108,11 +109,12 @@ async def recover_stalled_jobs() -> int:
 @app.task(name="jobfinder.maintenance", queue="control")
 async def maintenance(timestamp: int) -> None:
     from app.ai.provider import recover_reservations
-    from app.services.retention import expire_approved_documents
+    from app.services.retention import expire_approved_documents, expire_page_extractions
 
     await recover_stalled_jobs()
     await asyncio.to_thread(recover_reservations)
     await asyncio.to_thread(expire_approved_documents)
+    await asyncio.to_thread(expire_page_extractions)
 
 
 def bootstrap_queue() -> None:

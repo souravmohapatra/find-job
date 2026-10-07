@@ -14,6 +14,7 @@ from app.collection.models import (
     JobRevision,
     JobSource,
     Observation,
+    PageExtraction,
     Source,
 )
 from app.profile_models import Operation, Profile, ProfileRevision, now
@@ -27,6 +28,11 @@ def key(value: str) -> str:
 
 
 def page_operation(db: Session, run: CollectionRun) -> Operation:
+    snapshot = db.get(PageExtraction, (run.id, run.next_offset))
+    if snapshot:
+        operation = db.get(Operation, snapshot.operation_id)
+        assert operation is not None
+        return operation
     return create_operation(
         db,
         "source_collect",
