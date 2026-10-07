@@ -1,15 +1,10 @@
+import { CompaniesPage, CompanyPage } from '../features/inventory/companies';
+import { JobsPage, JobPage } from '../features/inventory/jobs';
 import { AiSettings } from '../features/settings/ai';
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
-import {
-  BriefcaseBusiness,
-  Building2,
-  UserRound,
-  Settings2,
-  LogOut,
-  ArrowRight,
-} from 'lucide-react';
+import { BriefcaseBusiness, Building2, UserRound, Settings2, LogOut } from 'lucide-react';
 import { api, ApiError, errorMessage, type Session } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Login } from '../features/auth/login';
@@ -91,59 +86,6 @@ function Shell({ session }: { session: Session }) {
     </div>
   );
 }
-const pages = {
-  jobs: {
-    eyebrow: 'YOUR OPPORTUNITIES',
-    title: 'A wider view of what’s next',
-    description: 'Relevant roles from the companies you choose, with room to explore.',
-    empty: 'Your job search starts here',
-    body: 'First, review your experience and the roles you want to explore. Then choose the companies to follow.',
-    link: '/profile',
-    action: 'View profile setup',
-  },
-  companies: {
-    eyebrow: 'YOUR WATCHLIST',
-    title: 'Companies',
-    description: 'Keep the companies you care about in one place.',
-    empty: 'Company monitoring is being built',
-    body: 'You’ll be able to follow a company by name or careers URL, choose a check interval, and browse every collected role.',
-  },
-  profile: {
-    eyebrow: 'YOUR DIRECTION',
-    title: 'Profile',
-    description: 'Your experience is the starting point. Your preferences set the direction.',
-    empty: 'Profile setup is being built',
-    body: 'You’ll be able to upload a CV, review the extracted experience, choose target roles, and decide whether to explore new domains.',
-  },
-};
-function FoundationPage({ page }: { page: keyof typeof pages }) {
-  const data = pages[page];
-  return (
-    <>
-      <p className="eyebrow">{data.eyebrow}</p>
-      <h1 tabIndex={-1}>{data.title}</h1>
-      <p className="page-description">{data.description}</p>
-      <section className="empty-state" aria-labelledby="empty-title">
-        <div className="empty-icon">
-          <BriefcaseBusiness aria-hidden="true" size={28} />
-        </div>
-        <h2 id="empty-title">{data.empty}</h2>
-        <p>{data.body}</p>
-        {'link' in data && (
-          <Button asChild>
-            <NavLink to={data.link}>
-              {data.action}
-              <ArrowRight size={18} aria-hidden="true" />
-            </NavLink>
-          </Button>
-        )}
-        <p className="preview-note">
-          Company monitoring and job matching are still being built. Profile setup is available.
-        </p>
-      </section>
-    </>
-  );
-}
 function Settings() {
   const status = useQuery({ queryKey: ['status'], queryFn: api.status });
   return (
@@ -218,8 +160,10 @@ export function App() {
       <Route element={<Shell session={session.data} />}>
         <Route path="/" element={<Navigate to="/jobs" replace />} />
         <Route path="/login" element={<Navigate to="/jobs" replace />} />
-        <Route path="/jobs" element={<FoundationPage page="jobs" />} />
-        <Route path="/companies" element={<FoundationPage page="companies" />} />
+        <Route path="/jobs" element={<JobsPage />} />
+        <Route path="/companies" element={<CompaniesPage />} />
+        <Route path="/companies/:id" element={<CompanyPage />} />
+        <Route path="/jobs/:id" element={<JobPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<Settings />} />
         <Route

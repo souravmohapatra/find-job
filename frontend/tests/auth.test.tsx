@@ -116,7 +116,7 @@ test('empty form validates locally and password visibility is keyboard-operable'
 test('session expiry removes private cached data and returns to sign-in', async () => {
   vi.spyOn(api, 'session').mockResolvedValueOnce(session).mockResolvedValueOnce(null);
   const client = renderApp();
-  await screen.findByRole('heading', { name: 'A wider view of what’s next' });
+  await screen.findByRole('heading', { name: 'Jobs' });
   client.setQueryData(['private-profile'], { summary: 'Synthetic experience' });
   await act(async () => {
     await client.invalidateQueries({ queryKey: ['session'] });
@@ -133,6 +133,9 @@ test('failed sign-out keeps the workspace visible and reports the failure', asyn
   const user = userEvent.setup();
   renderApp();
   await user.click(await screen.findByRole('button', { name: 'Sign out' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Cannot reach Job Finder.');
-  expect(screen.getByRole('heading', { name: 'A wider view of what’s next' })).toBeVisible();
+  expect(await screen.findByText('Cannot reach Job Finder.', { exact: true })).toHaveAttribute(
+    'role',
+    'alert',
+  );
+  expect(screen.getByRole('heading', { name: 'Jobs' })).toBeVisible();
 });

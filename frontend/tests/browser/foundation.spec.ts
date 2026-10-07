@@ -30,6 +30,30 @@ for (const width of [375, 768, 1440]) {
             phase: 'foundation',
           },
         });
+      if (path.endsWith('/companies'))
+        return route.fulfill({ json: { items: [], next_offset: null } });
+      if (path.endsWith('/jobs'))
+        return route.fulfill({
+          status: 503,
+          json: {
+            code: 'matching_unavailable',
+            message: 'Shortlisting is not available yet. Browse all collected jobs.',
+          },
+        });
+      if (path.endsWith('/settings/ai/usage'))
+        return route.fulfill({
+          json: { tasks: [], recent: [], unresolved: [], day_start_utc: '2026-10-07T00:00:00Z' },
+        });
+      if (path.endsWith('/settings/ai'))
+        return route.fulfill({
+          json: {
+            integration_mode: 'mock',
+            key_configured: false,
+            limits_revision: 0,
+            limits: { daily_calls: 500, daily_usd: '5' },
+            tasks: [],
+          },
+        });
       throw new Error(`Unexpected API request: ${path}`);
     });
     await page.goto('/companies');
@@ -40,7 +64,7 @@ for (const width of [375, 768, 1440]) {
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByRole('heading', { name: 'Companies', exact: true })).toBeVisible();
     await page.getByRole('link', { name: 'Jobs', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'A wider view of what’s next' })).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeFocused();
     await expect(page.getByRole('navigation')).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

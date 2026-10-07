@@ -272,3 +272,71 @@ test('real billing recovery records verified cost without a new AI request', asy
   expect(Number(call.reported_usd)).toBe(0.25);
   expect(usage.recent).toHaveLength(1);
 });
+
+test('company watch → source controls → all jobs → detail and retained filters', async ({
+  page,
+}) => {
+  await page.goto('/companies');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByLabel('Company name', { exact: true }).fill('Synthetic Entertainment');
+  await page.getByLabel('Check interval (hours)').fill('12');
+  await page.getByRole('button', { name: 'Follow company' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic Entertainment', exact: true }),
+  ).toBeVisible();
+  const companyId = new URL(page.url()).pathname.split('/').at(-1)!;
+  await expect(
+    page.getByText('No source configured yet. Your company watch is retained.'),
+  ).toBeVisible();
+  await page.getByLabel('Job board provider').selectOption('lever');
+  await page.getByLabel('Board identifier').fill('synthetic');
+  await page.getByLabel('I checked that this board belongs to this company').check();
+  await page.getByRole('button', { name: 'Add source' }).click();
+  await expect(page.getByRole('heading', { name: 'lever source' })).toBeVisible();
+  await page.getByText('Edit company watch', { exact: true }).click();
+  await page.getByLabel('Pause monitoring').check();
+  await page.getByRole('button', { name: 'Save company', exact: true }).click();
+  await expect(page.getByText('Monitoring paused', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check now' })).toBeDisabled();
+  await page.getByLabel('Pause monitoring').uncheck();
+  await page.getByRole('button', { name: 'Save company', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Check now' })).toBeEnabled();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/company-${width}.png`, fullPage: true });
+  }
+  await page.getByText('Source settings and recent checks', { exact: true }).click();
+  const sourceCard = page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name: 'lever source' }) });
+  await sourceCard.getByLabel('Check interval (hours)').fill('6');
+  await sourceCard.getByRole('button', { name: 'Save source', exact: true }).click();
+  await expect(sourceCard.getByText('Source settings saved.')).toBeVisible();
+  execFileSync('../backend/.venv/bin/python', ['../scripts/seed-browser-jobs.py', companyId]);
+  await page.getByRole('link', { name: 'All collected jobs', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Legal adviser', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Strategy manager', exact: true })).toBeVisible();
+  await page.getByLabel('Search collected jobs').fill('Legal');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Strategy manager', exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Legal adviser', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Legal adviser', exact: true })).toBeVisible();
+  await expect(page.getByText(/This role has not been assessed/)).toBeVisible();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/job-${width}.png`, fullPage: true });
+  }
+  await page.getByRole('link', { name: 'Back to jobs', exact: true }).click();
+  await expect(page.getByLabel('Search collected jobs')).toHaveValue('Legal');
+  expect(new URL(page.url()).searchParams.get('company_id')).toBe(companyId);
+});
