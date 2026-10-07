@@ -116,12 +116,17 @@ async def recover_stalled_jobs() -> int:
 @app.task(name="jobfinder.maintenance", queue="control")
 async def maintenance(timestamp: int) -> None:
     from app.ai.provider import recover_reservations
-    from app.services.retention import expire_approved_documents, expire_page_extractions
+    from app.services.retention import (
+        expire_approved_documents,
+        expire_page_extractions,
+        expire_source_snapshots,
+    )
 
     await recover_stalled_jobs()
     await asyncio.to_thread(recover_reservations)
     await asyncio.to_thread(expire_approved_documents)
     await asyncio.to_thread(expire_page_extractions)
+    await asyncio.to_thread(expire_source_snapshots)
 
 
 def bootstrap_queue() -> None:

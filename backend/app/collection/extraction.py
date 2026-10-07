@@ -73,6 +73,9 @@ def stage(db: Session, run_id: UUID, offset: int, prepared: PreparedPage) -> Non
     context(
         page.text, page.url, page.links
     )  # No truncation or incomplete input pretending to be complete.
+    from app.collection.cache import save as save_snapshot
+
+    save_snapshot(db, source, prepared.snapshot)
     config_id = capture(db, "job_extraction")
     mode = get_settings().integration_mode
     operation = create_operation(

@@ -27,6 +27,8 @@ class FetchResult(BaseModel):
     etag: str | None = None
     modified: str | None = None
     retry_after: int | None = None
+    cacheable: bool = True
+    redirected: bool = False
 
 
 class FetchFailure(Exception):

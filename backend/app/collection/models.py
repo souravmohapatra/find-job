@@ -230,3 +230,13 @@ class PageExtraction(Base):
     inventory: Mapped[dict[str, Any]] = mapped_column(JSONB)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SourceSnapshot(Base):
+    __tablename__ = "source_snapshots"
+    source_id: Mapped[UUID] = mapped_column(ForeignKey("sources.id"), primary_key=True)
+    url_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_revision: Mapped[int]
+    document: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    body_hash: Mapped[str] = mapped_column(String(64))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

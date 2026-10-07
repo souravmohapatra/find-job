@@ -1,7 +1,7 @@
 """Bounded page preparation; database writes happen only after lease validation."""
 
 from datetime import timedelta
-from typing import Any, cast
+from typing import cast
 from uuid import UUID
 
 from app.collection.ats import decode_page, request_url
@@ -12,12 +12,6 @@ from app.profile_models import now
 from app.services.operations import OperationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-
-def fetch_json(url: str) -> Any:
-    from app.collection.transport import fetch_json as remote_fetch
-
-    return remote_fetch(url)
 
 
 def prepare_page(run_id: UUID, offset: int) -> InventoryPage:
@@ -59,9 +53,10 @@ def prepare_page(run_id: UUID, offset: int) -> InventoryPage:
             raise OperationError(
                 "adapter_unavailable", "This source adapter is not configured.", blocked=True
             )
+        source_id, source_revision = source.id, source.revision
         adapter = cast(Adapter, source.adapter)
         url = (
-            source.url
+            generic_config[0]
             if generic_config
             else request_url(
                 adapter,
@@ -70,11 +65,19 @@ def prepare_page(run_id: UUID, offset: int) -> InventoryPage:
                 offset=offset,
             )
         )
-    if generic_config:
-        from app.collection.generic_inventory import collect
+    from app.collection import cache, generic_inventory, transport
+    from app.collection.extraction_input import PreparedPage
 
-        return collect(*generic_config)
-    return decode_page(adapter, fetch_json(url), offset=offset)
+    remote = generic_inventory.fetch_document if generic_config else transport.fetch_document
+    document, snapshot = cache.fetch(source_id, source_revision, url, remote)
+    page = (
+        generic_inventory.collect(*generic_config, document=document)
+        if generic_config
+        else decode_page(adapter, transport.parse_json(document), offset=offset)
+    )
+    if isinstance(page, PreparedPage):
+        return page.model_copy(update={"snapshot": snapshot})
+    return PreparedPage(**page.model_dump(), snapshot=snapshot)
 
 
 def record_failure(

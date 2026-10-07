@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from uuid import UUID
 
@@ -5,6 +6,7 @@ from app.collection.contracts import InventoryPage, Posting
 from app.collection.inventory import apply_page, begin_run, key, schedule_due
 from app.collection.models import CollectionRun, Company, Job, JobRevision, JobSource, Source
 from app.db import get_engine
+from app.fetcher.contracts import FetchResult
 from app.profile_models import Operation, now
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -169,7 +171,7 @@ def test_schedule_catches_up_once_respects_pause_cooldown_and_rejects_stale_sour
 
 
 def test_worker_collection_is_idempotent_and_missing_fetcher_is_visible(monkeypatch) -> None:
-    from app.collection import runner
+    from app.collection import transport
     from app.services.operations import process_operation
 
     with Session(get_engine()) as db, db.begin():
@@ -196,7 +198,17 @@ def test_worker_collection_is_idempotent_and_missing_fetcher_is_visible(monkeypa
             }
         ]
 
-    monkeypatch.setattr(runner, "fetch_json", fetch)
+    monkeypatch.setattr(
+        transport,
+        "fetch_document",
+        lambda request: FetchResult(
+            url=request.url,
+            status=200,
+            body=json.dumps(fetch(request.url)),
+            content_type="application/json",
+            etag='"synthetic"',
+        ),
+    )
     with Session(get_engine()) as db, db.begin():
         operation_id = begin_run(db, db.get(Source, source_id, with_for_update=True)).id
     process_operation(operation_id)
@@ -211,7 +223,7 @@ def test_worker_collection_is_idempotent_and_missing_fetcher_is_visible(monkeypa
 def test_lost_worker_lease_cannot_publish_fetched_jobs(monkeypatch) -> None:
     from uuid import uuid4
 
-    from app.collection import runner
+    from app.collection import transport
     from app.services.operations import process_operation
 
     with Session(get_engine()) as db, db.begin():
@@ -230,7 +242,17 @@ def test_lost_worker_lease_cannot_publish_fetched_jobs(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr(runner, "fetch_json", fetch)
+    monkeypatch.setattr(
+        transport,
+        "fetch_document",
+        lambda request: FetchResult(
+            url=request.url,
+            status=200,
+            body=json.dumps(fetch(request.url)),
+            content_type="application/json",
+            etag='"synthetic"',
+        ),
+    )
     process_operation(operation_id)
     with Session(get_engine()) as db:
         assert db.scalar(select(Job)) is None
@@ -256,7 +278,7 @@ def test_concurrent_schedulers_create_one_catchup() -> None:
 
 
 def test_transient_fetch_failure_preserves_inventory_and_retries_with_cooldown(monkeypatch) -> None:
-    from app.collection import runner
+    from app.collection import runner, transport
     from app.services.operations import OperationError, process_operation
 
     with Session(get_engine()) as db, db.begin():
@@ -270,7 +292,7 @@ def test_transient_fetch_failure_preserves_inventory_and_retries_with_cooldown(m
             "source_rate_limited", "Source requested a delay.", retryable=True, retry_after=120
         )
 
-    monkeypatch.setattr(runner, "fetch_json", unavailable)
+    monkeypatch.setattr(transport, "fetch_document", unavailable)
     process_operation(operation_id)
     with Session(get_engine()) as db, db.begin():
         operation = db.get(Operation, operation_id)

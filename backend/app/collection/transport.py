@@ -94,7 +94,10 @@ def fetch_document(request: FetchRequest) -> FetchResult:
 
 
 def fetch_json(url: str) -> Any:
-    document = fetch_document(FetchRequest(url=url))
+    return parse_json(fetch_document(FetchRequest(url=url)))
+
+
+def parse_json(document: FetchResult) -> Any:
     if document.status == 429 or document.status >= 500:
         raise OperationError(
             "source_unavailable",

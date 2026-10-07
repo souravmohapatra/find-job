@@ -6,8 +6,8 @@ import unicodedata
 from app.collection.contracts import InventoryPage
 from app.collection.extraction_input import PreparedPage, PublicPage
 from app.collection.generic import GenericPage, JobCandidate, parse_page
-from app.collection.transport import fetch_document
-from app.fetcher.contracts import FetchRequest
+from app.collection.transport import fetch_document as fetch_document
+from app.fetcher.contracts import FetchRequest, FetchResult
 from app.services.operations import OperationError
 
 
@@ -51,8 +51,10 @@ def inventory(page: GenericPage, company_name: str, website: str) -> InventoryPa
     )
 
 
-def collect(url: str, company_name: str, website: str) -> InventoryPage:
-    document = fetch_document(FetchRequest(url=url))
+def collect(
+    url: str, company_name: str, website: str, *, document: FetchResult | None = None
+) -> InventoryPage:
+    document = document or fetch_document(FetchRequest(url=url))
     if document.status != 200:
         raise OperationError(
             "generic_http_error",

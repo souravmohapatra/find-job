@@ -271,3 +271,48 @@ def test_long_origin_backoff_is_preserved_while_worker_retry_is_bounded(tmp_path
     with pytest.raises(OperationError) as failure:
         transport.fetch_json("https://example.com/jobs")
     assert failure.value.retry_after == 30 * 86400
+
+
+@pytest.mark.parametrize(
+    "headers,cacheable",
+    [
+        ({}, True),
+        ({"cache-control": "public, no-store"}, False),
+        ({"vary": "Accept-Encoding"}, False),
+        ({"vary": "*"}, False),
+    ],
+)
+def test_304_without_body_ignores_representation_encoding(
+    tmp_path, monkeypatch, headers, cacheable
+):
+    def handler(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, stream=Stream(b""))
+        assert request.headers["if-none-match"] == '"v1"'
+        return httpx.Response(
+            304, headers={**headers, "content-encoding": "gzip", "etag": '"v1"'}, stream=Stream(b"")
+        )
+
+    fetcher, _ = setup_fetcher(tmp_path, monkeypatch, handler)
+    result = asyncio.run(fetcher.fetch(FetchRequest(url="https://example.com/jobs", etag='"v1"')))
+    assert result.status == 304 and result.body == "" and result.cacheable is cacheable
+
+
+def test_redirect_back_to_original_still_reports_lost_conditional_headers(tmp_path, monkeypatch):
+    count = 0
+
+    def handler(request):
+        nonlocal count
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, stream=Stream(b""))
+        count += 1
+        if count < 3:
+            return httpx.Response(
+                302, headers={"location": "/other" if count == 1 else "/jobs"}, stream=Stream(b"")
+            )
+        assert "if-none-match" not in request.headers
+        return httpx.Response(304, stream=Stream(b""))
+
+    fetcher, _ = setup_fetcher(tmp_path, monkeypatch, handler)
+    result = asyncio.run(fetcher.fetch(FetchRequest(url="https://example.com/jobs", etag='"v1"')))
+    assert result.url == "https://example.com/jobs" and result.redirected

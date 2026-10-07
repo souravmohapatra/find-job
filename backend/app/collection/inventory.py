@@ -136,6 +136,11 @@ def apply_page(
         return
     if run.next_offset != offset:
         raise ValueError("Unexpected inventory continuation.")
+    from app.collection.cache import save as save_snapshot
+    from app.collection.extraction_input import PreparedPage
+
+    if isinstance(page, PreparedPage):
+        save_snapshot(db, source, page.snapshot)
     issues = set(run.issues) | set(page.issues)
     if source.adapter == "generic_http":
         frontier = list(run.frontier)

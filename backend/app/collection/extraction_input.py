@@ -1,5 +1,6 @@
 """Bounded public-page handoff between fetch and AI queues."""
 
+from app.collection.cache import SnapshotUpdate
 from app.collection.contracts import InventoryPage, public_link
 from app.collection.generic import PageLink
 from pydantic import BaseModel, Field, field_validator
@@ -17,4 +18,5 @@ class PublicPage(BaseModel):
 
 
 class PreparedPage(InventoryPage):
+    snapshot: SnapshotUpdate | None = Field(default=None, exclude=True)
     extraction: PublicPage | None = None

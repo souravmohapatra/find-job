@@ -126,7 +126,7 @@ class Fetcher:
                         body="",
                         content_type="",
                     )
-                raw = await body_bytes(response, limit)
+                raw = b"" if response.status_code == 304 else await body_bytes(response, limit)
                 try:
                     body = raw.decode(response.encoding or "utf-8")
                 except (UnicodeError, LookupError):
@@ -139,6 +139,14 @@ class Fetcher:
                     etag=response.headers.get("etag", "")[:1000] or None,
                     modified=response.headers.get("last-modified", "")[:1000] or None,
                     retry_after=retry,
+                    cacheable=(
+                        "no-store"
+                        not in {
+                            part.strip().split("=", 1)[0].lower()
+                            for part in response.headers.get("cache-control", "").split(",")
+                        }
+                        and not response.headers.get("vary", "").strip()
+                    ),
                 )
             finally:
                 await response.aclose()
@@ -152,12 +160,12 @@ class Fetcher:
         *,
         robots: bool,
     ) -> FetchResult:
-        for _ in range(6):
+        for hop in range(6):
             if robots:
                 await self.allowed(client, url)
             response = await self.one(client, url, headers, limit)
             if response.status not in {301, 302, 303, 307, 308}:
-                return response
+                return response.model_copy(update={"redirected": hop > 0})
             url = response.url
             headers = {}  # Conditional validators never cross a redirect boundary.
         raise FetchFailure("redirect_limit")
