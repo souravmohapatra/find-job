@@ -80,6 +80,7 @@ def dispatch() -> int:
 def tick(timestamp: int) -> None:
     from app.collection.discovery import schedule
     from app.collection.inventory import schedule_due
+    from app.services.matching import reconcile
 
     with Session(get_engine()) as db, db.begin():
         schedule_due(db)
@@ -87,6 +88,8 @@ def tick(timestamp: int) -> None:
     # source locks before discovery takes company locks to avoid inversion.
     with Session(get_engine()) as db, db.begin():
         schedule(db)
+    with Session(get_engine()) as db, db.begin():
+        reconcile(db)
     dispatch()
 
 

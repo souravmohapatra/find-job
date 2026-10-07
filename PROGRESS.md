@@ -6,7 +6,7 @@ Updated: 2026-10-07.
 
 ## Current state
 
-Implementation is active. Authentication, generic CV/profile review, OpenRouter task settings/accounting, company inventory, persistent URL/Brave discovery, candidate review and generic structured job collection have local synthetic/API/database validation. The portal has real browser validation for the implemented profile/settings/company/review journeys. HTTP fetching remains disabled until deployment isolation is validated. Unstructured extraction contracts are implemented with mocked evidence tests, but queue integration, browser fallback, live matching acceptance, ntfy, remaining inventory UX, backup/restore and production/live acceptance are unfinished.
+Implementation is active. Authentication, generic CV/profile review, OpenRouter task settings/accounting, company inventory, persistent URL/Brave discovery, candidate review, generic structured job collection and broad matching/reassessment have local synthetic/API/database validation. Matching also has a complete authored-fixture worker-to-portal browser journey. The portal has real browser validation for the implemented profile/settings/company/review journeys. HTTP fetching remains disabled until deployment isolation is validated. Unstructured extraction contracts are implemented with mocked evidence tests, but queue integration, browser fallback, live matching acceptance, ntfy, remaining inventory UX, backup/restore and production/live acceptance are unfinished.
 
 Active blocker: Python Playwright dependency setup failed through the package-registry Python proxy with `invalid peer certificate: UnknownIssuer` (uv exit 2). No retry or trust workaround was attempted; awaiting the user's trust fix or explicit new retry instructions. This blocks browser dependency setup, not independent work using installed packages. Normal Docker bridge/isolation checks still require the intended deployment environment. Full goal remains active; no end-to-end live monitoring claim is made.
 
@@ -462,3 +462,15 @@ Final backend suite: 166 passed (86.40s). Final full real API/PostgreSQL/worker/
 Ruff lint/format and strict mypy pass; frontend build/lint/format pass (158.41 KB gzipped JavaScript, existing chunk warning). The final matching views have no overflow/axe violations at 375/1440, and the updated mobile screenshot was reviewed. Synthetic fixture replay makes no provider call or billing record; this is workflow acceptance, not real-source coverage, model-quality acceptance or production isolation. Browser fixture servers exited.
 
 Saving this phase locally. Next address policy-upgrade reassessment reconciliation and remaining generic extraction integration, then ntfy/digest/local operations and release gates. Python Playwright dependency setup remains stopped at the existing certificate blocker; no new fetch, trust workaround or live API request was made. The complete PLAN.md goal remains active.
+
+### Matching policy reconciliation checkpoint
+
+Previous phase is commit df47159. Added a bounded periodic reconciliation pass (100 active/unknown jobs per minute) that looks for missing current job/profile/model/policy/mode intents using their indexed deterministic keys. It handles policy upgrades, rollback with newer inventory, mode changes and restart without a volatile cursor. Existing failed/blocked/cancelled intents are not silently retried. Closed roles remain manual reassessment only; unmapped models and missing profiles skip the scan. Collection, explicit reassessment and profile fan-out now share intent construction. Fan-out captures policy version and refuses obsolete continuations.
+
+Twenty-eight reconciliation/assessment/inventory regressions passed (13.44s), covering bounded batches, rollback, concurrent ticks, mode changes and failure deduplication. Ruff and strict mypy pass after import ordering cleanup. Full backend verification follows; no frontend change, dependency attempt or live API request occurred.
+
+### Policy reconciliation validated
+
+Full backend suite passed 170 tests (36.88s). After adding an explicit normal-control-tick wiring check, all five reconciliation tests passed (0.99s). Ruff lint/format and strict mypy pass. No schema/API response or frontend changes required a new migration or UI build. The periodic scan now fills missing current-policy intents independently of a new company observation, while preserving failed-call retry boundaries and manual handling for closed jobs.
+
+Saving this phase locally. Reviewed generic collection and extraction integration: fetched visible text/observed links need a persisted handoff to the AI queue, with source/run revision guards and employer verification before accepting open roles. That integration remains the next implementation step; no extraction completion is claimed. The complete PLAN.md goal remains active, with the same stopped browser dependency setup and no new provider/dependency request.

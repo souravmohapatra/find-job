@@ -14,6 +14,7 @@ from app.api.contracts import (
 from app.auth import DB, Auth
 from app.config import get_settings
 from app.documents.parser import DocumentError, detect_type
+from app.domain.matching import POLICY_VERSION
 from app.domain.profile import Facts, Preferences, ProfileInput, experience
 from app.errors import problem
 from app.profile_models import Document, Operation, Profile, ProfileDraft, ProfileRevision, now
@@ -346,6 +347,7 @@ def activate_revision(db: DB, profile: Profile, body: ProfileInput) -> ProfileRe
         {
             "profile_revision_id": str(revision.id),
             "integration_mode": get_settings().integration_mode,
+            "policy_version": POLICY_VERSION,
         },
     )
     return revision

@@ -21,6 +21,7 @@ from app.api.contracts import OperationAccepted
 from app.api.profiles import Expected, Key
 from app.auth import DB, Auth
 from app.config import get_settings
+from app.domain.matching import POLICY_VERSION
 from app.errors import problem
 from app.profile_models import now
 from app.services.operations import create_operation, operation_response
@@ -90,6 +91,7 @@ def update_ai(
                 "ai_config_id": str(row.id),
                 "reason": "model_changed",
                 "integration_mode": get_settings().integration_mode,
+                "policy_version": POLICY_VERSION,
             },
         )
     db.commit()

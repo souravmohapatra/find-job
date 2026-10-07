@@ -16,8 +16,6 @@ from app.collection.models import (
     Observation,
     Source,
 )
-from app.config import get_settings
-from app.domain.matching import POLICY_VERSION
 from app.profile_models import Operation, Profile, ProfileRevision, now
 from app.services.operations import create_operation
 from sqlalchemy import select
@@ -100,19 +98,9 @@ def assess_intent(db: Session, job: Job, revision: JobRevision) -> Operation | N
     if approved is None:
         return None  # A later profile activation expands the full inventory for assessment.
     config_id = capture(db, "job_matching")
-    return create_operation(
-        db,
-        "job_assess",
-        f"{revision.id}:{approved.id}:{config_id}:{POLICY_VERSION}:{get_settings().integration_mode}",
-        {
-            "job_id": str(job.id),
-            "job_revision_id": str(revision.id),
-            "profile_revision_id": str(approved.id),
-            "config_id": config_id,
-            "policy_version": POLICY_VERSION,
-            "integration_mode": get_settings().integration_mode,
-        },
-    )
+    from app.services.matching import enqueue
+
+    return enqueue(db, job, revision, approved, config_id)
 
 
 def apply_page(
