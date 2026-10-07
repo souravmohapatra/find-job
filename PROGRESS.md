@@ -8,6 +8,68 @@ Updated: 2026-10-07.
 
 Implementation is authorized and in progress. Backend dependencies are installed and locked through the approved package-registry Python index. Backend authentication/migration source passes static checks but runtime tests are blocked by host-to-container PostgreSQL handshake timeouts. The frontend authentication/navigation slice has passed mocked validation; the integrated foundation milestone and remaining product flows are still pending.
 
+## Latest checkpoint: Docker/database blocker — 2026-10-07
+
+Implementation is blocked on the development host's Docker database connectivity. This entry records the actual outputs from the preceding implementation checks; no new network probe or dependency retry was run for this documentation update.
+
+### Completed and saved
+
+- `36d391a`: backend dependency manifest/lockfile and validation evidence. The authorized package-registry retry succeeded with TLS enabled and SSL_CERT_DIR unset for that process only.
+- `306aa64`: frontend authentication/navigation foundation. Production build, lint, formatting, six component tests and three mocked browser journeys passed. These do not prove backend or full product behavior.
+- Backend source passes Ruff and strict mypy, but its authentication/migration runtime tests have not completed. Backend source and initial Compose/deployment scripts remain uncommitted pending runtime validation.
+
+### Actual failure and supporting evidence
+
+Docker image pulls and test-container startup succeeded. The failure is the host application's PostgreSQL connection to the Docker container, not a failed Docker pull or startup command.
+
+Startup command:
+
+```sh
+docker compose -f compose.test.yaml up -d --wait --pull never
+```
+
+It exited successfully and reported `Container jobfinder-test-db-1 Healthy`. Subsequent `docker compose -f compose.test.yaml ps` showed the service healthy, exposing `127.0.0.1:55439->5432/tcp`.
+
+The initial test command was:
+
+```sh
+python3 scripts/test-backend.py -q
+```
+
+It stalled opening the database connection for the initial Alembic migration. It was explicitly interrupted after approximately 79 seconds; no tests completed. The relevant test output was:
+
+```text
+KeyboardInterrupt
+<repository>/backend/.venv/lib/python3.12/site-packages/psycopg/connection.py:118: KeyboardInterrupt
+2 warnings in 79.24s (0:01:19)
+```
+
+Separate bounded `psycopg.connect(..., connect_timeout=5)` probes to each of `127.0.0.1:55439` and `172.19.0.2:5432` raised `psycopg.OperationalError`; the captured error text for each was exactly:
+
+```text
+connection timeout expired
+```
+
+Container-local `psql` successfully queried PostgreSQL. A host TCP socket connection to the published port succeeded, but the PostgreSQL handshake did not. The database activity query showed only the container-local diagnostic query, with no host client session.
+
+Read-only routing checks produced these relevant fields:
+
+```text
+$ ip route get 172.19.0.2
+172.19.0.2 dev cscotun0
+
+$ ip -br address show br-5adb41e90655
+br-5adb41e90655  DOWN  172.19.0.1/16
+```
+
+The route excerpt omits the host source address and user ID. Docker network inspection identified subnet `172.19.0.0/16`, gateway `172.19.0.1`, and container address `172.19.0.2`. These observations locate a routing/bridge problem; they do not establish why the bridge is down or prove that the VPN caused it.
+
+### Pending action and preserved state
+
+User assistance is needed to restore the host-to-test-container network path. No VPN, firewall, host route, or Docker daemon configuration has been changed. The isolated `jobfinder-test-db-1` container was left running for diagnosis; its data is temporary and separate from production. Added ten-second database connection/pool timeouts in the uncommitted backend so future application attempts fail promptly.
+
+After the network path is restored, verify a bounded database connection, rerun backend migration/authentication tests, and continue milestone 1's integrated Compose validation. Do not repeat the completed dependency setup or claim the full application is ready. The active implementation goal is marked blocked awaiting this external change.
+
 ## Completed
 
 - Initial product/context baseline and personal-project/local-Git guidance.
@@ -39,7 +101,7 @@ Continue implementation milestone 1 after resolving the current test database co
 
 Read AGENTS.md, CONTEXT.md, DECISIONS.md and IMPLEMENTATION.md. Exact models are intentionally unset; profile_analysis, job_extraction and job_matching must be configured independently before their LLM tasks run. No local LLM infrastructure is planned. Brave requires a deployment key for automatic company-name discovery; direct URL monitoring can work without it. Domain diversification defaults open but is visibly editable. “All jobs” includes unassessed and rejected jobs. Notification success means ntfy acceptance, not device display. Preserve unknown/partial/error states and no-public-ingress boundaries.
 
-## Development readiness
+## Development readiness (historical pre-implementation checks)
 
 The current workspace is the development environment. Read-only checks found Ubuntu 24.04, accessible Docker/Compose, Python 3.12 and Node 22, with adequate available memory/disk for the planned containers. No package installation or container build/start was performed.
 
@@ -53,7 +115,7 @@ No additional host package installation is identified as a prerequisite to start
 
 The user requested implementation, validated phase commits and blocker escalation. Local dependencies, project containers and test execution are now in scope. Mocks remain the default; no live paid requests. Phase 1 is starting with migration/authentication/UI/development infrastructure.
 
-## Dependency blocker during phase 1
+## Dependency blocker during phase 1 (historical; resolved below)
 
 The configured npm proxy passed npm ping. Backend foundation code, authentication tests and migration/Compose files have been created, but they are unvalidated and uncommitted. `uv sync --project backend` failed fetching `https://pypi.org/simple/lxml/` with `invalid peer certificate: UnknownIssuer`. No certificate/registry workaround or retry was attempted.
 
@@ -61,7 +123,7 @@ The user clarified that this development environment is on a restricted developm
 
 The already-running image pulls finished successfully for postgres:17-alpine, python:3.12-slim, node:22-alpine and caddy:2-alpine. No download process remains pending. The current blocker is Python/uv certificate trust.
 
-## Approval-review blocker on the authorized retry
+## Approval-review blocker on the authorized retry (historical; resolved below)
 
 The goal-resume instruction specified one retry through the package-registry Python index, preserving TLS and existing .netrc credentials, and a second attempt with SSL_CERT_DIR unset only if the first returned UnknownIssuer. Automatic approval review rejected the first command before execution. After checking the existing rule's exception for new user instructions, the same command was resubmitted with explicit reference to the resume authorization; review again rejected it because it did not recognize that authorization as a user message. Neither dependency attempt executed. No credentials were displayed or modified, no TLS settings changed, and no further network attempt was made. Asked the user to provide the authorization in ordinary chat so review can recognize it. Backend implementation remains unvalidated and uncommitted.
 
@@ -81,4 +143,4 @@ The configured npm proxy installed 298 packages and generated frontend/package-l
 
 Validation passed: TypeScript/production Vite build, ESLint, six Vitest component/behavior tests, and three Playwright Chrome journeys at 375/768/1440 widths. Browser checks include sign-in, navigation focus, settings, CSRF sign-out, no horizontal page overflow, and zero axe violations on the checked login/workspace states. Inspected desktop and mobile screenshots. Browser API responses are mocked; none of these results validate backend authentication, private deployment or the full job-finding journey. Test servers terminated normally; screenshots remain ignored under frontend/test-results/.
 
-Read-only routing diagnosis narrowed the backend blocker: `ip route get 172.19.0.2` selects cscotun0, while Docker's br-5adb41e90655 interface for 172.19.0.0/16 is DOWN. This explains why a healthy container does not establish a host SQL session; it does not prove why the bridge is down. No VPN, routes or firewall settings were changed. User assistance is still needed at that boundary.
+Read-only routing diagnosis narrowed the backend blocker: `ip route get 172.19.0.2` selects cscotun0, while Docker's br-5adb41e90655 interface for 172.19.0.0/16 is DOWN. This is evidence of a routing/bridge problem, but does not establish why the bridge is down or prove that the VPN caused it. No VPN, routes or firewall settings were changed. User assistance is still needed at that boundary.
