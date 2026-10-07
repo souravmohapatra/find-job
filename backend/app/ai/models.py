@@ -57,6 +57,8 @@ class InferenceCall(Base):
     error_code: Mapped[str | None] = mapped_column(String(80))
     reserved_usd: Mapped[Decimal] = mapped_column(Numeric(16, 8))
     reported_usd: Mapped[Decimal | None] = mapped_column(Numeric(16, 8))
+    cost_source: Mapped[str | None] = mapped_column(String(30))
+    accounted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     prompt_tokens: Mapped[int | None]
     completion_tokens: Mapped[int | None]
     latency_ms: Mapped[int | None]

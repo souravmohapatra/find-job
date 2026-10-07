@@ -6,7 +6,7 @@ Updated: 2026-10-07.
 
 ## Current state
 
-Implementation is active. Backend dependencies and the host-network development PostgreSQL setup are ready. Authentication and profile ingestion/review now work through the real API/database/worker; the frontend includes a generic profile editor and explicit domain-diversification choices. Tests use synthetic data and mock inference. OpenRouter task configuration and provider handling now have mocked transport and local browser validation. Live provider acceptance, remaining profile/billing-recovery UX, company collection, matching, notifications and deployment gates remain to be completed. Normal Docker bridge networking is still a deployment-server validation requirement.
+Implementation is active. Backend dependencies and the host-network development PostgreSQL setup are ready. Authentication and profile ingestion/review now work through the real API/database/worker; the frontend includes a generic profile editor and explicit domain-diversification choices. Tests use synthetic data and mock inference. OpenRouter task configuration and provider handling now have mocked transport and local browser validation. Live provider acceptance, richer synthetic profile fixtures, company collection, matching, notifications and deployment gates remain to be completed. Normal Docker bridge networking is still a deployment-server validation requirement.
 
 ## Host-network development alternative — 2026-10-07 (verified)
 
@@ -234,3 +234,19 @@ Fourteen backend profile tests pass, including stale profile/draft revision reje
 The original real upload/review browser journey passed (29.0s). The isolated conflict browser journey passed (9.8s; 18.1s with startup), proving a retained local summary, selected remote goals, renewed review and a new persisted profile revision. At 375/1440 widths the comparison had no horizontal overflow or axe violations; desktop screenshot inspected. The earlier timeout coincided with unexpected Vite document reloads during overlapping frontend work, and did not recur with an isolated run. Added that isolation rule to AGENTS.md. No live API calls or real-CV inference occurred.
 
 Remaining milestone 2 follow-up: billing-recovery UI and verified unknown-cost resolution, plus richer synthetic analysis fixtures and final live acceptance. Company inventory/scheduling, generic discovery, matching, ntfy and deployment gates remain part of the active goal.
+
+### Local CV confirmation and pending billing validation
+
+2026-10-07: Reconfirmed the supplied PDF with the aggregate-only `scripts/check-cv.py` utility: one page, 3,847 characters, no persisted extracted content and no AI requests. Git ignores the original. It is an example, not a parser template; existing synthetic coverage includes PDF, TXT and DOCX body/table order. Arbitrary PDF column order and semantic accuracy remain unverified; OCR is unsupported.
+
+The initial shell inspection again failed before execution with exit 1: `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`; approved escalated inspection succeeded without network changes. Collected pending billing-check results: API contract generation passed and 27 AI backend tests passed (8.95s, existing upstream deprecation warning). The frontend build failed with `src/features/settings/billing.tsx(34,21): error TS2554: Expected 1 arguments, but got 0.` Supplied the required initial useRef value; build revalidation follows. Billing controls and provenance remain uncommitted and need further validation. The overall implementation goal remains active.
+
+Frontend TypeScript/Vite build passed after the useRef initialization correction (150.62 KB gzipped JavaScript). This resolves that build failure; billing browser/interaction validation remains pending.
+
+### Billing recovery validated locally
+
+Added request accounting history, unresolved reservation recovery, queued provider metadata lookup and confirmed owner-verified cost entry. Stored provenance distinguishes provider reports, owner verification, rejected requests and legacy records. Resolution never retries inference; stale/repeated owner writes return conflicts. Unknown reservations remain held until resolved.
+
+Validation: 48 backend tests passed (27.88s; existing upstream deprecation warning), 12 frontend tests passed, API generation, TypeScript/Vite build, ESLint, Prettier, Ruff lint/format and strict mypy passed. The real browser recovery journey passed (10.5s; 21.9s including startup), using one synthetic unknown request in the fixed disposable database. It verified required confirmation, persisted 0.25 owner-verified cost, released hold and no new inference. At 375/1440 widths: no horizontal overflow or axe violations; mobile screenshot inspected. No live API calls or private CV inference occurred.
+
+Next: company/source inventory and scheduled ATS collection. Richer synthetic profile analysis fixtures and live acceptance remain open, along with discovery, matching, ntfy, production Compose/ingress/isolation and final release gates. Deployment scaffolding remains unvalidated; the full goal remains active.

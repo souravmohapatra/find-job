@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import AxeBuilder from '@axe-core/playwright';
 test('real upload → worker parsing → review → saved preferences', async ({ page }) => {
   await page.goto('/profile');
@@ -232,4 +233,42 @@ test('profile conflict preserves local edits and reconciles selected saved value
   expect(result.revision).toBe(seed.revision + 2);
   expect(result.facts.summary).toBe('My local research summary');
   expect(result.preferences.goals).toBe('Work in education');
+});
+
+test('real billing recovery records verified cost without a new AI request', async ({ page }) => {
+  const id = execFileSync('../backend/.venv/bin/python', ['../scripts/seed-browser-billing.py'], {
+    encoding: 'utf8',
+  }).trim();
+  await page.goto('/settings');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(
+    page.getByText('No generation ID was received, so automatic lookup is unavailable.'),
+  ).toBeVisible();
+  await page.getByText('Record a charge you verified').click();
+  const submit = page.getByRole('button', { name: 'Record verified cost' });
+  await expect(submit).toBeDisabled();
+  await page.getByLabel('Verified cost (USD)').fill('0.25');
+  await expect(submit).toBeDisabled();
+  await page.getByLabel('I checked this request in provider billing').check();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/billing-${width}.png`, fullPage: true });
+  }
+  await submit.click();
+  await expect(page.getByText(/Verified charge recorded. No AI retry was started/)).toBeVisible();
+  await expect(page.getByLabel('Verified cost (USD)')).toHaveCount(0);
+  const response = await page.request.get('/api/v1/settings/ai/usage');
+  expect(response.ok()).toBe(true);
+  const usage = await response.json();
+  expect(usage.unresolved).toEqual([]);
+  const call = usage.recent.find((entry: { id: string }) => entry.id === id);
+  expect(call.cost_source).toBe('owner_verified');
+  expect(Number(call.reported_usd)).toBe(0.25);
+  expect(usage.recent).toHaveLength(1);
 });

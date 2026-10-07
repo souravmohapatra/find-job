@@ -1,3 +1,4 @@
+import { BillingHistory } from './billing';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -347,15 +348,7 @@ function LimitsForm({ settings, csrf }: { settings: Settings; csrf: string }) {
     </section>
   );
 }
-type Usage = {
-  tasks: {
-    task: keyof typeof names;
-    calls_today: number;
-    reported_usd: string;
-    held_usd: string;
-    unresolved_count: number;
-  }[];
-};
+type Usage = Schemas['UsageView'];
 export function AiSettings() {
   const session = useQuery({ queryKey: ['session'], queryFn: api.session, staleTime: 30000 });
   const settings = useQuery({ queryKey: ['ai-settings'], queryFn: loadSettings });
@@ -413,7 +406,7 @@ export function AiSettings() {
               <div key={task.task}>
                 <dt>{names[task.task]}</dt>
                 <dd>
-                  {task.calls_today} calls · ${Number(task.reported_usd).toFixed(4)} reported · $
+                  {task.calls_today} calls · ${Number(task.reported_usd).toFixed(4)} recorded · $
                   {Number(task.held_usd).toFixed(4)} held
                   {task.unresolved_count > 0 && (
                     <p>
@@ -427,6 +420,14 @@ export function AiSettings() {
           </dl>
         )}
       </section>
+      {usage.data && (
+        <BillingHistory
+          usage={usage.data}
+          names={names}
+          csrf={session.data!.csrf_token}
+          live={settings.data.integration_mode === 'live'}
+        />
+      )}
     </div>
   );
 }

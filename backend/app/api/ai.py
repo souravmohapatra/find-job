@@ -8,9 +8,12 @@ from app.ai.contracts import (
     TASKS,
     AiLimits,
     AiSettingsView,
+    CallView,
     TaskConfig,
     TaskUpdate,
+    UsageView,
     ValidateRequest,
+    VerifyCost,
 )
 from app.ai.models import AiLimitsRow, InferenceCall, TaskRevision
 from app.ai.provider import key_available
@@ -130,7 +133,7 @@ def validate_config(
     return operation_response(operation, row.id)
 
 
-@router.get("/usage")
+@router.get("/usage", response_model=UsageView)
 def get_usage(session: Auth, db: DB) -> dict[str, Any]:
     start = now().replace(hour=0, minute=0, second=0, microsecond=0)
     summary = []
@@ -166,22 +169,55 @@ def get_usage(session: Auth, db: DB) -> dict[str, Any]:
     return {
         "day_start_utc": start,
         "tasks": summary,
-        "recent": [
-            {
-                "id": row.id,
-                "task": row.task,
-                "state": row.state,
-                "model": row.returned_model or row.requested_model,
-                "provider": row.provider,
-                "generation_id": row.generation_id,
-                "reserved_usd": str(row.reserved_usd),
-                "reported_usd": str(row.reported_usd) if row.reported_usd is not None else None,
-                "error_code": row.error_code,
-                "created_at": row.created_at,
-            }
-            for row in recent
+        "recent": [call_data(row) for row in recent],
+        "unresolved": [
+            call_data(row)
+            for row in db.scalars(
+                select(InferenceCall)
+                .where(InferenceCall.state == "unknown")
+                .order_by(InferenceCall.created_at)
+                .limit(100)
+            )
         ],
     }
+
+
+def call_data(row: InferenceCall) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "task": row.task,
+        "operation_id": row.operation_id,
+        "state": row.state,
+        "model": row.returned_model or row.requested_model,
+        "provider": row.provider,
+        "generation_id": row.generation_id,
+        "reserved_usd": row.reserved_usd,
+        "reported_usd": row.reported_usd,
+        "cost_source": row.cost_source,
+        "accounted_at": row.accounted_at,
+        "error_code": row.error_code,
+        "created_at": row.created_at,
+    }
+
+
+@router.post("/usage/{call_id}/verify", response_model=CallView)
+def verify_cost(call_id: UUID, body: VerifyCost, session: Auth, db: DB) -> dict[str, Any]:
+    db.execute(text("SELECT pg_advisory_xact_lock(1012003)"))
+    call = db.get(InferenceCall, call_id, with_for_update=True)
+    if call is None:
+        raise problem(404, "call_not_found", "This request could not be found.")
+    if call.state != "unknown":
+        raise problem(
+            409,
+            "billing_changed",
+            "This request is no longer unresolved. Refresh usage before continuing.",
+        )
+    call.reported_usd = body.cost_usd
+    call.cost_source = "owner_verified"
+    call.accounted_at = now()
+    call.state = "owner_reconciled"
+    db.commit()
+    return call_data(call)
 
 
 @router.post("/usage/{call_id}/reconcile", status_code=202, response_model=OperationAccepted)

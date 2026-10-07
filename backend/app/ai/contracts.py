@@ -1,8 +1,10 @@
 """Non-secret, versioned AI configuration. Models are deliberately unset initially."""
 
 import re
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from app.domain.profile import Contract
 from pydantic import Field, field_validator, model_validator
@@ -90,3 +92,39 @@ class TaskUpdate(Contract):
 class ValidateRequest(Contract):
     task: TaskKey
     acknowledge_cost: bool = False
+
+
+class VerifyCost(Contract):
+    cost_usd: Decimal = Field(ge=0, le=100000, decimal_places=8)
+    confirmation: Literal["I VERIFIED THE PROVIDER BILLING"]
+
+
+class CallView(Contract):
+    id: UUID
+    task: TaskKey
+    operation_id: UUID | None
+    state: str
+    model: str
+    provider: str | None
+    generation_id: str | None
+    reserved_usd: Decimal
+    reported_usd: Decimal | None
+    cost_source: str | None
+    accounted_at: datetime | None
+    error_code: str | None
+    created_at: datetime
+
+
+class TaskUsage(Contract):
+    task: TaskKey
+    calls_today: int
+    reported_usd: Decimal
+    held_usd: Decimal
+    unresolved_count: int
+
+
+class UsageView(Contract):
+    day_start_utc: datetime
+    tasks: list[TaskUsage]
+    recent: list[CallView]
+    unresolved: list[CallView]

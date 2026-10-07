@@ -36,6 +36,7 @@ REST JSON under `/api/v1`, served from the same origin as the web client. FastAP
 | POST /settings/ai/validate | Explicit configuration check using minimal synthetic input; may incur API cost, never uses a CV. |
 | PATCH /settings/ai/limits | Versioned AI daily call/spend limits; If-Match uses limits_revision. |
 | POST /settings/ai/usage/{id}/reconcile | Queue generation-metadata billing reconciliation when an unresolved request has a generation ID. |
+| POST /settings/ai/usage/{id}/verify | Record an explicitly confirmed owner-verified cost for an unresolved request; no inference retry. |
 | GET /settings/ai/usage | Per-task usage, estimated/reported cost, reservations and paused states. |
 | GET /notifications | Sent/failed/ambiguous delivery history. |
 | GET /health/live; GET /health/ready; GET /status | Liveness, DB/migration readiness, authenticated dependency/backlog status. |

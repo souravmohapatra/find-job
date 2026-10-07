@@ -843,3 +843,28 @@ details[open] > summary {
 .comparison-columns p {
   overflow-wrap: anywhere;
 }
+.billing-call {
+  border-top: 1px solid var(--border);
+  padding: 20px 0;
+  display: grid;
+  gap: 16px;
+}
+.billing-call h4 {
+  font-weight: 600;
+}
+.billing-call p,
+.billing-history p {
+  overflow-wrap: anywhere;
+}
+.billing-call > button {
+  justify-self: start;
+}
+.billing-history {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.billing-history li {
+  border-top: 1px solid var(--border);
+  padding: 16px 0;
+}

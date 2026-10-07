@@ -73,6 +73,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/settings/ai/usage/{call_id}/verify': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Verify Cost */
+    post: operations['verify_cost_api_v1_settings_ai_usage__call_id__verify_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/settings/ai/usage/{call_id}/reconcile': {
     parameters: {
       query?: never;
@@ -462,6 +479,44 @@ export interface components {
        * @default false
        */
       retain_original: boolean;
+    };
+    /** CallView */
+    CallView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Task
+       * @enum {string}
+       */
+      task: 'profile_analysis' | 'job_extraction' | 'job_matching';
+      /** Operation Id */
+      operation_id: string | null;
+      /** State */
+      state: string;
+      /** Model */
+      model: string;
+      /** Provider */
+      provider: string | null;
+      /** Generation Id */
+      generation_id: string | null;
+      /** Reserved Usd */
+      reserved_usd: string;
+      /** Reported Usd */
+      reported_usd: string | null;
+      /** Cost Source */
+      cost_source: string | null;
+      /** Accounted At */
+      accounted_at: string | null;
+      /** Error Code */
+      error_code: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /** Criterion */
     Criterion: {
@@ -908,6 +963,22 @@ export interface components {
       task: 'profile_analysis' | 'job_extraction' | 'job_matching';
       config: components['schemas']['TaskConfig-Input'];
     };
+    /** TaskUsage */
+    TaskUsage: {
+      /**
+       * Task
+       * @enum {string}
+       */
+      task: 'profile_analysis' | 'job_extraction' | 'job_matching';
+      /** Calls Today */
+      calls_today: number;
+      /** Reported Usd */
+      reported_usd: string;
+      /** Held Usd */
+      held_usd: string;
+      /** Unresolved Count */
+      unresolved_count: number;
+    };
     /** TaskView */
     TaskView: {
       /**
@@ -922,6 +993,20 @@ export interface components {
       validation_state: string;
       /** Error Code */
       error_code: string | null;
+    };
+    /** UsageView */
+    UsageView: {
+      /**
+       * Day Start Utc
+       * Format: date-time
+       */
+      day_start_utc: string;
+      /** Tasks */
+      tasks: components['schemas']['TaskUsage'][];
+      /** Recent */
+      recent: components['schemas']['CallView'][];
+      /** Unresolved */
+      unresolved: components['schemas']['CallView'][];
     };
     /** ValidateRequest */
     ValidateRequest: {
@@ -948,6 +1033,16 @@ export interface components {
       input?: unknown;
       /** Context */
       ctx?: Record<string, never>;
+    };
+    /** VerifyCost */
+    VerifyCost: {
+      /** Cost Usd */
+      cost_usd: number | string;
+      /**
+       * Confirmation
+       * @constant
+       */
+      confirmation: 'I VERIFIED THE PROVIDER BILLING';
     };
   };
   responses: never;
@@ -1098,9 +1193,42 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': {
-            [key: string]: unknown;
-          };
+          'application/json': components['schemas']['UsageView'];
+        };
+      };
+    };
+  };
+  verify_cost_api_v1_settings_ai_usage__call_id__verify_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        call_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['VerifyCost'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CallView'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };

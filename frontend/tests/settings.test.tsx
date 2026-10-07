@@ -36,7 +36,8 @@ test('AI configuration conflicts preserve model choices and make no validation r
   const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
     if (options?.method === 'PATCH')
       throw new api.ApiError(409, 'revision_conflict', 'Settings changed elsewhere.');
-    if (path === '/settings/ai/usage') return { tasks: [] };
+    if (path === '/settings/ai/usage')
+      return { tasks: [], recent: [], unresolved: [], day_start_utc: '2026-01-01T00:00:00Z' };
     return settings;
   });
   const client = new QueryClient({

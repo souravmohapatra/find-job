@@ -350,6 +350,7 @@ def finish(
     error_code: str | None = None,
     response: dict[str, Any] | None = None,
     latency: int = 0,
+    cost_source: str = "provider",
 ) -> None:
     response = response or {}
     usage = response.get("usage")
@@ -361,6 +362,8 @@ def finish(
         row.state = state if cost is not None else "unknown"
         row.error_code = error_code
         row.reported_usd = cost
+        row.cost_source = cost_source if cost is not None else None
+        row.accounted_at = now() if cost is not None else None
         row.latency_ms = latency
         row.finished_at = now()
         for field, key in [
@@ -506,6 +509,7 @@ def infer[T: BaseModel](
                     state="failed",
                     error_code=failure.code,
                     response={"usage": {"cost": 0}} if known_free else None,
+                    cost_source="rejected",
                     latency=latency,
                 )
                 if response.status_code == 429:

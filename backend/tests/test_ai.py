@@ -494,3 +494,63 @@ def test_cancelled_operation_cannot_reserve_another_request() -> None:
     assert captured.value.code == "operation_cancelled"
     with Session(get_engine()) as db:
         assert db.scalar(select(InferenceCall)) is None
+
+
+def test_verified_cost_requires_confirmation_and_does_not_retry(client: TestClient) -> None:
+    identifier = configuration()
+    call_id = provider.reserve(
+        identifier, "profile_analysis", TaskConfig(model="example/profile"), None, "v1", "v1"
+    )
+    provider.finish(call_id, state="unknown", error_code="ai_transport")
+    url = f"/api/v1/settings/ai/usage/{call_id}/verify"
+    assert client.post(url, json={"cost_usd": "0"}).status_code == 401
+    headers = auth(client)
+    assert client.post(url, headers=headers, json={"cost_usd": "0"}).status_code == 422
+    assert (
+        client.post(
+            url,
+            headers=headers,
+            json={"cost_usd": "-1", "confirmation": "I VERIFIED THE PROVIDER BILLING"},
+        ).status_code
+        == 422
+    )
+    response = client.post(
+        url,
+        headers=headers,
+        json={"cost_usd": ".25", "confirmation": "I VERIFIED THE PROVIDER BILLING"},
+    )
+    assert response.status_code == 200
+    assert response.json()["cost_source"] == "owner_verified"
+    assert response.json()["reported_usd"] == "0.25"
+    assert (
+        client.post(
+            url,
+            headers=headers,
+            json={"cost_usd": "0", "confirmation": "I VERIFIED THE PROVIDER BILLING"},
+        ).status_code
+        == 409
+    )
+    usage = client.get("/api/v1/settings/ai/usage").json()
+    assert usage["unresolved"] == []
+    assert Decimal(usage["tasks"][0]["reported_usd"]) == Decimal(".25")
+    with Session(get_engine()) as db:
+        assert len(list(db.scalars(select(InferenceCall)))) == 1
+        assert db.scalar(select(Operation)) is None
+    # The resolved reservation no longer pauses this task, but its cost still counts.
+    provider.reserve(
+        identifier, "profile_analysis", TaskConfig(model="example/profile"), None, "v1", "v1"
+    )
+
+
+def test_provider_reconciliation_records_provenance(transport: dict[str, Any]) -> None:
+    identifier = configuration()
+    transport["responses"] = [completion(usage={})]
+    with pytest.raises(OperationError):
+        run(identifier)
+    with Session(get_engine()) as db:
+        call_id = db.scalar(select(InferenceCall)).id
+    reconcile_call(call_id)
+    with Session(get_engine()) as db:
+        row = db.get(InferenceCall, call_id)
+        assert row.cost_source == "provider" and row.accounted_at is not None
+        assert row.state == "reconciled"

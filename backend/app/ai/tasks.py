@@ -1,6 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
+import httpx
 from app.ai import provider
 from app.ai.configuration import set_validation
 from app.ai.contracts import TaskKey
@@ -8,6 +9,7 @@ from app.ai.models import InferenceCall
 from app.ai.provider import http_failure, infer, money
 from app.config import get_settings
 from app.db import get_engine
+from app.profile_models import now
 from app.services.operations import OperationError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
@@ -42,7 +44,21 @@ def reconcile_call(call_id: UUID) -> None:
             return
         generation = row.generation_id
     with provider.client() as http:
-        response = http.get("generation", params={"id": generation})
+        try:
+            response = http.get("generation", params={"id": generation})
+        except httpx.HTTPError as error:
+            raise OperationError(
+                "ai_billing_unavailable",
+                "Billing lookup is temporarily unavailable; the reservation remains held.",
+                retryable=True,
+            ) from error
+        if response.status_code == 404:
+            raise OperationError(
+                "ai_cost_pending",
+                "Provider billing metadata is not available yet; the reservation remains held.",
+                retryable=True,
+                retry_after=60,
+            )
         if response.status_code != 200:
             raise http_failure(response)
         try:
@@ -60,4 +76,6 @@ def reconcile_call(call_id: UUID) -> None:
         row = db.get(InferenceCall, call_id, with_for_update=True)
         if row and row.state == "unknown":
             row.reported_usd = cost
+            row.cost_source = "provider"
+            row.accounted_at = now()
             row.state = "reconciled"
