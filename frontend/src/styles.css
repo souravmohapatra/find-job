@@ -1039,3 +1039,16 @@ details[open] > summary {
 .company-coverage p + p {
   margin-top: 0.5rem;
 }
+
+.company-jobs > * + * {
+  margin-top: 1rem;
+}
+.company-jobs h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.job-list-notice a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}

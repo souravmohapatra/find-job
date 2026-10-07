@@ -45,7 +45,7 @@ Profile purge uses a dedicated confirmation in the UI. Removing a company initia
 
 ## Query and response semantics
 
-`GET /jobs?company_id=...&view=all` omits suitability predicates and includes unassessed and failed assessments. Default view `recommended` (labelled Shortlist) includes current match and possible_match using the broad inclusion policy. `availability=all` includes closed/unknown jobs; filters and counts remain explicit. Results use a stable `(first_seen_at,id)` cursor for both recommended and all jobs; default page size 30, maximum 100. Company job counts are computed under clearly labelled scope.
+`GET /jobs?company_id=...&view=all` omits suitability predicates and includes unassessed and failed assessments. Default view `recommended` (labelled Shortlist) includes current match and possible_match using the broad inclusion policy. `availability=open` is the default and includes active/unknown jobs; `active`, `unknown` and `closed` remain explicit single-state filters, and `all` includes every state; filters and counts remain explicit. Results use a stable `(first_seen_at,id)` cursor for both recommended and all jobs; default page size 30, maximum 100. Company job counts are computed under clearly labelled scope.
 
 Long-running actions return 202 with `{operation_id, resource_id, status_url}`. Clients do not wait for scraping or inference in an HTTP request. Mutating operation endpoints accept Idempotency-Key; its owner/route scope and request hash prevent accidental reuse with different input. Database uniqueness still protects scheduled tasks.
 
@@ -82,3 +82,5 @@ POST `/settings/notifications/test` requires an Idempotency-Key and creates an i
 ### Company inventory coverage
 
 Company list/detail/edit responses include a batched coverage summary: collected jobs by active/unknown/closed availability; total/enabled sources; enabled sources with non-authoritative coverage, errors or no completed successful check; latest source attempt and latest successful source check; next collection and discovery dates. Jobs are counted once regardless of how many sources observe them. Dates are historical maxima, not a claim that every source succeeded. Scheduled collection dates exclude disabled sources, respect source cooldowns, and are absent for paused watches; discovery is separately labelled. These are stored-inventory counts, never company-wide vacancy guarantees.
+
+A saved job_matching task revision without a selected model remains matching_unavailable for Shortlist and manual reassessment. All jobs still returns stored inventory with matching_available=false. A configuration record alone does not establish that matching is configured.

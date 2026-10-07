@@ -2558,7 +2558,7 @@ export interface operations {
       query?: {
         company_id?: string | null;
         view?: 'all' | 'recommended';
-        availability?: 'all' | 'active' | 'closed' | 'unknown';
+        availability?: 'open' | 'all' | 'active' | 'closed' | 'unknown';
         q?: string;
         limit?: number;
         cursor?: string | null;

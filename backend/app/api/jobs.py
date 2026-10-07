@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from app.ai.configuration import capture
+from app.ai.models import TaskRevision
 from app.api.contracts import OperationAccepted, OperationView
 from app.api.inventory_contracts import (
     AssessmentView,
@@ -50,6 +51,12 @@ def matching_context(db: Session) -> tuple[UUID | None, UUID | None, str]:
     )
     config = capture(db, "job_matching")
     return profile_id, UUID(config) if config else None, get_settings().integration_mode
+
+
+def matching_ready(db: Session, context: tuple[UUID | None, UUID | None, str]) -> bool:
+    profile_id, config_id, _ = context
+    config = db.get(TaskRevision, config_id) if config_id else None
+    return bool(profile_id and config and config.config.get("model"))
 
 
 def assessment_conditions(
@@ -139,13 +146,13 @@ def jobs(
     db: DB,
     company_id: UUID | None = None,
     view: Literal["all", "recommended"] = "recommended",
-    availability: Availability = "active",
+    availability: Availability = "open",
     q: str = Query("", max_length=200),
     limit: int = Query(30, ge=1, le=100),
     cursor: str | None = Query(None, max_length=1000),
 ) -> JobPage:
     context = matching_context(db)
-    available = context[0] is not None and context[1] is not None
+    available = matching_ready(db, context)
     if view == "recommended" and not available:
         raise problem(
             503,
@@ -171,7 +178,9 @@ def jobs(
         if db.get(Company, company_id) is None:
             raise problem(404, "company_not_found", "This company watch could not be found.")
         statement = statement.where(Job.company_id == company_id)
-    if availability != "all":
+    if availability == "open":
+        statement = statement.where(Job.availability.in_(["active", "unknown"]))
+    elif availability != "all":
         statement = statement.where(Job.availability == availability)
     if q.strip():
         document = func.concat_ws(
@@ -278,8 +287,8 @@ def reassess(
         response = operation_response(previous, identifier)
         db.commit()
         return response
-    profile_id, config_id, _ = matching_context(db)
-    if profile_id is None or config_id is None:
+    context = matching_context(db)
+    if not matching_ready(db, context):
         raise problem(
             409, "matching_unavailable", "Review a profile and configure a matching model first."
         )

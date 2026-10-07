@@ -339,6 +339,47 @@ test('company watch → source controls → all jobs → detail and retained fil
     await companyCard.screenshot({ path: `test-results/company-overview-${width}.png` });
   }
   await companyCard.getByRole('link', { name: 'Synthetic Entertainment', exact: true }).click();
+  const companyJobs = page.getByRole('region', {
+    name: 'Jobs at Synthetic Entertainment',
+    exact: true,
+  });
+  await companyJobs.getByRole('button', { name: 'All jobs', exact: true }).click();
+  await expect(
+    companyJobs.getByRole('link', { name: 'Strategy manager', exact: true }),
+  ).toBeVisible();
+  await companyJobs.getByLabel('Search collected jobs').fill('Legal');
+  await companyJobs.getByRole('button', { name: 'Search', exact: true }).click();
+  const companyJobsPath = new URL(page.url()).pathname + new URL(page.url()).search;
+  const legalLink = companyJobs.getByRole('link', { name: 'Legal adviser', exact: true });
+  await legalLink.scrollIntoViewIfNeeded();
+  const readingPosition = await page.evaluate(() => scrollY);
+  await legalLink.click();
+  await expect(page.getByRole('heading', { name: 'Legal adviser', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to jobs', exact: true }).click();
+  await expect(companyJobs.getByLabel('Search collected jobs')).toHaveValue('Legal');
+  expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(companyJobsPath);
+  await expect
+    .poll(async () => Math.abs((await page.evaluate(() => scrollY)) - readingPosition))
+    .toBeLessThan(5);
+  await expect(legalLink).toBeFocused();
+  await legalLink.click();
+  await expect(page.getByRole('heading', { name: 'Legal adviser', exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(companyJobs.getByLabel('Search collected jobs')).toHaveValue('Legal');
+  await expect(legalLink).toBeFocused();
+  await companyJobs.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(
+    companyJobs.getByRole('link', { name: 'Strategy manager', exact: true }),
+  ).toBeVisible();
+  await expect(companyJobs.getByLabel('Availability')).toHaveValue('open');
+  for (const width of [375, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await companyJobs.screenshot({ path: `test-results/company-jobs-${width}.png` });
+  }
   await page.getByRole('link', { name: 'All collected jobs', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Legal adviser', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Strategy manager', exact: true })).toBeVisible();

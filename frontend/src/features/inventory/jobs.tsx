@@ -1,19 +1,37 @@
 import { assessmentLabel } from './assessment-label';
-import { useState } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useLocation, useNavigationType, useParams, useSearchParams } from 'react-router-dom';
+import { ApiError } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Failure } from './shared';
 import { AssessmentPanel, FeedbackPanel } from './assessment';
 import { date, read, type Schemas } from './data';
 
 export function JobsPage() {
+  return (
+    <>
+      <p className="eyebrow">YOUR OPPORTUNITIES</p>
+      <h1 tabIndex={-1}>Jobs</h1>
+      <p className="page-description">Browse roles from your companies, with room to explore.</p>
+      <JobList />
+    </>
+  );
+}
+
+export function JobList({ companyId }: { companyId?: string }) {
+  const client = useQueryClient();
+  const navigation = useNavigationType();
+  const restored = useRef<string | undefined>(undefined);
+  const Heading = companyId ? 'h3' : 'h2';
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const view = params.get('view') === 'all' ? 'all' : 'recommended';
-  const availability = params.get('availability') ?? 'active';
-  const company = params.get('company_id') ?? '';
-  const [search, setSearch] = useState(params.get('q') ?? '');
+  const availability = params.get('availability') ?? 'open';
+  const company = companyId ?? params.get('company_id') ?? '';
+  const savedSearch = params.get('q') ?? '';
+  const [search, setSearch] = useState(savedSearch);
+  useEffect(() => setSearch(savedSearch), [savedSearch]);
   const query = new URLSearchParams({ view, availability });
   if (company) query.set('company_id', company);
   if (params.get('q')) query.set('q', params.get('q')!);
@@ -31,8 +49,44 @@ export function JobsPage() {
   const companyInfo = useQuery({
     queryKey: ['company', company],
     queryFn: () => read<Schemas['CompanyView']>(`/companies/${company}`),
-    enabled: Boolean(company),
+    enabled: Boolean(company) && !companyId,
   });
+  const unavailable = jobs.error instanceof ApiError && jobs.error.code === 'matching_unavailable';
+  useEffect(() => {
+    if (
+      unavailable ||
+      restored.current === location.key ||
+      !jobs.data ||
+      jobs.isFetching ||
+      !(location.state?.restoreJobs || navigation === 'POP')
+    )
+      return;
+    const scroll = client.getQueryData<{ top: number; jobId: string }>([
+      'job-scroll',
+      location.pathname,
+      location.search,
+    ]);
+    if (scroll === undefined) return;
+    const frame = requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLAnchorElement>(`a[href="/jobs/${scroll.jobId}"]`)
+        ?.focus({ preventScroll: true });
+      window.scrollTo({ top: scroll.top, behavior: 'instant' });
+      restored.current = location.key;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    client,
+    jobs.data,
+    jobs.isFetching,
+    location.key,
+    location.pathname,
+    location.search,
+    location.state,
+    navigation,
+    unavailable,
+  ]);
+  const displayed = unavailable ? undefined : jobs.data;
   function filter(name: string, value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set(name, value);
@@ -41,9 +95,6 @@ export function JobsPage() {
   }
   return (
     <>
-      <p className="eyebrow">YOUR OPPORTUNITIES</p>
-      <h1 tabIndex={-1}>Jobs</h1>
-      <p className="page-description">Browse roles from your companies, with room to explore.</p>
       <div className="inventory-actions" aria-label="Job views">
         <Button
           variant={view === 'recommended' ? 'primary' : 'secondary'}
@@ -61,8 +112,8 @@ export function JobsPage() {
         </Button>
       </div>
       <section className="panel">
-        <h2>Filter jobs</h2>
-        {company && (
+        <Heading>Filter jobs</Heading>
+        {company && !companyId && (
           <p>
             Company: {companyInfo.data?.label ?? 'Selected company'} ·{' '}
             <Link to={`/companies/${company}`}>Company details</Link>
@@ -95,7 +146,8 @@ export function JobsPage() {
             value={availability}
             onChange={(e) => filter('availability', e.target.value)}
           >
-            <option value="active">Active</option>
+            <option value="open">Active or unknown</option>
+            <option value="active">Active only</option>
             <option value="unknown">Unknown</option>
             <option value="closed">Closed</option>
             <option value="all">All statuses</option>
@@ -112,23 +164,50 @@ export function JobsPage() {
         </Button>
       </section>
       {jobs.isPending && <p role="status">Loading jobs…</p>}
-      {jobs.isError && <Failure error={jobs.error} retry={() => void jobs.refetch()} />}
+      {unavailable ? (
+        <div className="notice job-list-notice" role="status">
+          <p>
+            Shortlisting is unavailable. Review your <Link to="/profile">profile</Link> and choose a
+            matching model in <Link to="/settings">Settings</Link>. All collected jobs remain
+            available.
+          </p>
+          <Button variant="secondary" onClick={() => filter('view', 'all')}>
+            Browse all collected jobs
+          </Button>
+        </div>
+      ) : (
+        jobs.isError && <Failure error={jobs.error} retry={() => void jobs.refetch()} />
+      )}
+      {displayed && (
+        <Button variant="secondary" disabled={jobs.isFetching} onClick={() => void jobs.refetch()}>
+          {jobs.isFetching ? 'Refreshing…' : 'Refresh jobs'}
+        </Button>
+      )}
       {view === 'all' && (
         <p className="field-help">
           All successfully collected roles, regardless of fit. Missing or failed sources can leave
           gaps.
         </p>
       )}
-      {jobs.data?.pages
+      {displayed?.pages
         .flatMap((page) => page.items)
         .map((job) => (
           <article className="panel inventory-row" key={job.id}>
             <div>
-              <h2>
-                <Link to={`/jobs/${job.id}`} state={{ from: location.pathname + location.search }}>
+              <Heading>
+                <Link
+                  to={`/jobs/${job.id}`}
+                  state={{ from: location.pathname + location.search }}
+                  onClick={() =>
+                    client.setQueryData(['job-scroll', location.pathname, location.search], {
+                      top: window.scrollY,
+                      jobId: job.id,
+                    })
+                  }
+                >
                   {job.posting.title}
                 </Link>
-              </h2>
+              </Heading>
               <p>
                 {job.company_label} ·{' '}
                 {(job.posting.locations ?? []).join(' · ') || 'Location not specified'}
@@ -140,13 +219,13 @@ export function JobsPage() {
             <span className="badge">{job.baseline ? 'Initial inventory' : 'New listing'}</span>
           </article>
         ))}
-      {jobs.data?.pages[0].items.length === 0 && (
+      {displayed?.pages[0].items.length === 0 && (
         <section className="empty-state">
-          <h2>
+          <Heading>
             {view === 'recommended'
               ? 'No current shortlist entries in this view'
               : 'No collected jobs in this view'}
-          </h2>
+          </Heading>
           <p>
             Check filters, company sources and assessment status in All jobs. Pending or failed
             assessments are not rejections, and this does not establish that a company has no
@@ -155,7 +234,7 @@ export function JobsPage() {
           <Link to="/companies">View company watches</Link>
         </section>
       )}
-      {jobs.hasNextPage && (
+      {!unavailable && jobs.hasNextPage && (
         <Button
           variant="secondary"
           disabled={jobs.isFetchingNextPage}
@@ -171,7 +250,8 @@ export function JobPage() {
   const { id } = useParams();
   const location = useLocation();
   const from =
-    typeof location.state?.from === 'string' && location.state.from.startsWith('/jobs?')
+    typeof location.state?.from === 'string' &&
+    /^\/(?:jobs(?:\?|$)|companies\/[0-9a-f-]{36}(?:\?|$))/i.test(location.state.from)
       ? location.state.from
       : '/jobs?view=all';
   const job = useQuery({
@@ -199,7 +279,9 @@ export function JobPage() {
   const data = job.data;
   return (
     <>
-      <Link to={from}>Back to jobs</Link>
+      <Link to={from} state={{ restoreJobs: true }}>
+        Back to jobs
+      </Link>
       <h1 tabIndex={-1}>{data.posting.title}</h1>
       <p>
         <Link to={`/companies/${data.company_id}`}>{data.company_label}</Link> · {data.availability}

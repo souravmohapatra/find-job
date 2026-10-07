@@ -151,7 +151,7 @@ class JobDetail(JobView):
     revision_count: int
 
 
-Availability = Literal["all", "active", "closed", "unknown"]
+Availability = Literal["open", "all", "active", "closed", "unknown"]
 PageSize = Annotated[int, Field(ge=1, le=100)]
 
 

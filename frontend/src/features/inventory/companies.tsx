@@ -6,6 +6,7 @@ import { request } from '../../lib/api';
 import { Failure, OperationStatus } from './shared';
 import { DiscoveryHistory } from './discovery';
 import { CompanyCoverage } from './coverage';
+import { JobList } from './jobs';
 import { date, read, useCsrf, type Schemas } from './data';
 
 export function CompaniesPage() {
@@ -430,6 +431,10 @@ export function CompanyPage() {
       </section>
       {action.isError && <Failure focus error={action.error} />}
       <OperationStatus id={operation} />
+      <section className="company-jobs" aria-labelledby="company-jobs-title">
+        <h2 id="company-jobs-title">Jobs at {company.data.label}</h2>
+        <JobList companyId={company.data.id} />
+      </section>
       <section className="panel">
         <h2>Company settings</h2>
         <CompanyEditor key={company.data.id} company={company.data} />

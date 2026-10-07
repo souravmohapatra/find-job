@@ -61,6 +61,7 @@ test('profile purge clears cached job explanations and feedback', async () => {
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(['job', 'synthetic'], { feedback: { reason: 'Synthetic private note' } });
+  client.setQueryData(['job-scroll', '/jobs', ''], { top: 100, jobId: 'synthetic' });
   client.setQueryData(['jobs', 'all'], { items: [{ assessment: 'Synthetic explanation' }] });
   client.setQueryData(['notification-history'], { pages: [{ items: ['Synthetic summary'] }] });
   const purged = vi.fn();
@@ -77,6 +78,7 @@ test('profile purge clears cached job explanations and feedback', async () => {
   await waitFor(() => expect(purged).toHaveBeenCalled());
   expect(client.getQueryData(['job', 'synthetic'])).toBeUndefined();
   expect(client.getQueryData(['jobs', 'all'])).toBeUndefined();
+  expect(client.getQueryData(['job-scroll', '/jobs', ''])).toBeUndefined();
   expect(client.getQueryData(['notification-history'])).toBeUndefined();
   client.clear();
 });

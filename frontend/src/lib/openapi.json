@@ -714,9 +714,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": ["all", "active", "closed", "unknown"],
+              "enum": ["open", "all", "active", "closed", "unknown"],
               "type": "string",
-              "default": "active",
+              "default": "open",
               "title": "Availability"
             }
           },

@@ -179,3 +179,43 @@ def test_manual_check_key_cannot_be_reused_for_another_company_with_pending_work
     assert client.post(f"/api/v1/companies/{ids[1]}/check", headers=headers).status_code == 202
     assert client.post(f"/api/v1/companies/{ids[1]}/check", headers=keyed).status_code == 409
     assert client.post(f"/api/v1/companies/{ids[0]}/check", headers=keyed).json() == first.json()
+
+
+def test_default_availability_includes_unknown_and_keeps_explicit_filters(client):
+    with Session(get_engine()) as db, db.begin():
+        row = source(db)
+        collect(
+            db,
+            row,
+            InventoryPage(postings=[posting("a"), posting("b"), posting("c")], complete=True),
+        )
+        jobs = list(db.scalars(select(Job).order_by(Job.id)))
+        jobs[0].availability = "unknown"
+        jobs[1].availability = "closed"
+    auth(client)
+    result = client.get("/api/v1/jobs?view=all").json()["items"]
+    assert {job["availability"] for job in result} == {"active", "unknown"}
+    assert len(client.get("/api/v1/jobs?view=all&availability=active").json()["items"]) == 1
+    assert len(client.get("/api/v1/jobs?view=all&availability=all").json()["items"]) == 3
+
+
+def test_saved_but_unmapped_matching_model_is_unavailable_without_hiding_inventory(client):
+    from app.ai.contracts import TaskConfig
+    from app.ai.models import TaskRevision
+    from test_assessments import setup
+
+    with Session(get_engine()) as db, db.begin():
+        setup(db)
+        db.add(
+            TaskRevision(
+                task="job_matching", revision=2, config=TaskConfig().model_dump(mode="json")
+            )
+        )
+        job_id = db.scalar(select(Job.id))
+    headers = auth(client)
+    response = client.get("/api/v1/jobs")
+    assert response.status_code == 503 and response.json()["code"] == "matching_unavailable"
+    all_jobs = client.get("/api/v1/jobs?view=all").json()
+    assert not all_jobs["matching_available"] and len(all_jobs["items"]) == 1
+    result = client.post(f"/api/v1/jobs/{job_id}/reassess", headers=headers)
+    assert result.status_code == 409 and result.json()["code"] == "matching_unavailable"

@@ -52,6 +52,7 @@ export function ProfileData({ csrf, onPurged }: { csrf: string; onPurged: () => 
             'operation',
             'job',
             'jobs',
+            'job-scroll',
             'notification-history',
           ].includes(String(query.queryKey[0])),
       });
