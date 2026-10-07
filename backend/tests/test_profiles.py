@@ -474,3 +474,55 @@ def test_purge_recreate_does_not_reuse_revision(client: TestClient) -> None:
         ).status_code
         == 409
     )
+
+
+def test_draft_reconciliation_checks_both_revisions_and_evidence(client: TestClient) -> None:
+    headers = auth(client)
+    body = {"facts": {"summary": "Reviewed nurse"}, "preferences": {"desired_roles": ["Nursing"]}}
+    assert (
+        client.patch(
+            "/api/v1/profile", headers={**headers, "If-Match": '"0"'}, json=body
+        ).status_code
+        == 200
+    )
+    draft = draft_for(client, upload(client, headers))
+    body["preferences"]["goals"] = "Flexible hours"
+    assert (
+        client.patch(
+            "/api/v1/profile", headers={**headers, "If-Match": '"1"'}, json=body
+        ).status_code
+        == 200
+    )
+    url = "/api/v1/profile/drafts/" + draft["id"] + "/reconcile"
+    choices = reviewed(draft)
+    choices["preferences"]["goals"] = "Flexible hours"
+    request = {"draft_version": draft["version"], "reviewed": True, "profile": choices}
+    assert client.post(url, headers={**headers, "If-Match": '"1"'}, json=request).status_code == 409
+    request["reviewed"] = False
+    assert client.post(url, headers={**headers, "If-Match": '"2"'}, json=request).status_code == 422
+    request["reviewed"] = True
+    choices["facts"]["skills"] = [
+        {
+            "value": "Fabricated",
+            "origin": "extracted",
+            "evidence": [{"span_id": "s1", "quote": "Not in CV"}],
+        }
+    ]
+    assert client.post(url, headers={**headers, "If-Match": '"2"'}, json=request).status_code == 422
+    choices["facts"]["skills"] = []
+    response = client.post(url, headers={**headers, "If-Match": '"2"'}, json=request)
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    assert saved["version"] == draft["version"] + 1 and saved["base_revision"] == 2
+    assert client.get("/api/v1/profile").json()["revision"] == 2
+    assert client.post(url, headers={**headers, "If-Match": '"2"'}, json=request).status_code == 409
+    activated = client.post(
+        "/api/v1/profile/drafts/" + draft["id"] + "/activate",
+        headers={**headers, "If-Match": '"2"'},
+        json={"draft_version": saved["version"], "reviewed": True},
+    )
+    assert activated.status_code == 200
+    assert (
+        activated.json()["revision"] == 3
+        and activated.json()["preferences"]["goals"] == "Flexible hours"
+    )

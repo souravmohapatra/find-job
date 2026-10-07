@@ -12,6 +12,7 @@ REST JSON under `/api/v1`, served from the same origin as the web client. FastAP
 | PATCH /profile/documents/{id}/retention | Change original-file retention for an available document. |
 | POST /profile/documents | Multipart upload; validates limits and returns document/operation IDs with 202. |
 | GET /profile/drafts/{id}; PATCH /profile/drafts/{id} | Review/edit extracted draft; no change to active profile. |
+| POST /profile/drafts/{id}/reconcile | Explicit owner-reviewed merge; If-Match checks the current profile and draft_version checks the draft. Saves a reconciled draft without activation. |
 | POST /profile/drafts/{id}/activate | Activate reviewed facts and preferences using expected base revision; queues reassessment. |
 | PATCH /profile | Update reviewed facts/preferences with If-Match revision; creates a new revision. |
 | GET /profile/documents/{id}/download | Authenticated original-file download if retained; never a public static URL. |

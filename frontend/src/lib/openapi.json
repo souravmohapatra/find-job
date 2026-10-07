@@ -686,6 +686,73 @@
         }
       }
     },
+    "/api/v1/profile/drafts/{draft_id}/reconcile": {
+      "post": {
+        "tags": ["profile"],
+        "summary": "Reconcile Draft",
+        "operationId": "reconcile_draft_api_v1_profile_drafts__draft_id__reconcile_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftReconciliation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/profile/drafts/{draft_id}/activate": {
       "post": {
         "tags": ["profile"],
@@ -1255,6 +1322,24 @@
           "deleted_at"
         ],
         "title": "DocumentView"
+      },
+      "DraftReconciliation": {
+        "properties": {
+          "draft_version": {
+            "type": "integer",
+            "title": "Draft Version"
+          },
+          "reviewed": {
+            "type": "boolean",
+            "title": "Reviewed"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileInput"
+          }
+        },
+        "type": "object",
+        "required": ["draft_version", "reviewed", "profile"],
+        "title": "DraftReconciliation"
       },
       "DraftSummary": {
         "properties": {

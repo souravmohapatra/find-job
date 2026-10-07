@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { errorMessage } from '../../lib/api';
+import { ApiError, errorMessage } from '../../lib/api';
 import { profileApi, type Draft, type Facts, type Preferences, type Snapshot } from './api';
 const criterion = z.object({
   id: z.string().uuid(),
@@ -136,6 +136,77 @@ function factsFrom(values: Values, old: Facts): Facts {
     }),
   };
 }
+const fieldLabels: Record<keyof Values, string> = {
+  summary: 'Summary',
+  desiredRoles: 'Desired roles',
+  domainMode: 'Domain mode',
+  domains: 'Target domains',
+  skills: 'Skills',
+  industries: 'Industries',
+  qualifications: 'Qualifications',
+  languages: 'Languages',
+  employment: 'Work history',
+  criteria: 'Criteria',
+  excludedFunctions: 'Excluded functions',
+  goals: 'Goals',
+  threshold: 'Relevance threshold',
+  experienceOverride: 'Experience estimate',
+};
+const factFields: Partial<Record<keyof Values, keyof Facts>> = {
+  summary: 'summary',
+  skills: 'skills',
+  industries: 'industries',
+  qualifications: 'qualifications',
+  languages: 'languages',
+  employment: 'employment',
+  experienceOverride: 'experience_years_override',
+};
+function profileFrom(values: Values, facts: Facts, preferences: Preferences) {
+  return {
+    facts: factsFrom(values, facts),
+    preferences: {
+      ...preferences,
+      desired_roles: split(values.desiredRoles),
+      domain_mode: values.domainMode,
+      domains: split(values.domains),
+      criteria: values.criteria,
+      excluded_functions: split(values.excludedFunctions),
+      goals: values.goals,
+      relevance_threshold: values.threshold,
+    },
+  };
+}
+function confirmedFacts(facts: Facts): Facts {
+  const confirm = (items: Facts['skills']) =>
+    (items ?? []).map((item) => ({ ...item, origin: 'user' as const, evidence: [] }));
+  return {
+    ...facts,
+    summary_evidence: [],
+    skills: confirm(facts.skills),
+    industries: confirm(facts.industries),
+    qualifications: confirm(facts.qualifications),
+    languages: confirm(facts.languages),
+    employment: (facts.employment ?? []).map((role) => ({
+      ...role,
+      origin: 'user' as const,
+      evidence: [],
+      responsibilities: confirm(role.responsibilities),
+    })),
+  };
+}
+function describe(value: Values[keyof Values]): string {
+  if (Array.isArray(value))
+    return (
+      value
+        .map((item) =>
+          'description' in item
+            ? `${item.description} (${item.strength}, ${item.kind})`
+            : `${item.title} · ${item.employer} (${item.start || '?'} – ${item.ongoing ? 'present' : item.end || '?'})\n${item.responsibilities}`,
+        )
+        .join('\n') || 'Not specified'
+    );
+  return String(value) || 'Not specified';
+}
 function Field({
   id,
   label,
@@ -177,13 +248,23 @@ export function ProfileEditor({
   csrf: string;
   onSaved: () => void;
 }) {
+  // Never let a background query refresh silently advance the revision being edited.
+  const [baseline, setBaseline] = useState(initial);
+  const [baseRevision, setBaseRevision] = useState(
+    draft?.base_revision ?? (initial as Snapshot).revision,
+  );
+  const [conflict, setConflict] = useState<{ profile: Snapshot; draft?: Draft }>();
+  const [choices, setChoices] = useState<
+    Partial<Record<keyof Values, 'mine' | 'profile' | 'draft'>>
+  >({});
+  const [compared, setCompared] = useState(false);
   const [draftVersion, setDraftVersion] = useState(draft?.version ?? 0);
   const [message, setMessage] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const alert = useRef<HTMLDivElement>(null);
   const form = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: defaults(initial.facts, initial.preferences),
+    defaultValues: defaults(baseline.facts, baseline.preferences),
   });
   const roles = useFieldArray({ control: form.control, name: 'employment' });
   const criteria = useFieldArray({ control: form.control, name: 'criteria', keyName: 'formKey' });
@@ -193,29 +274,17 @@ export function ProfileEditor({
   } = form;
   const save = useMutation({
     mutationFn: async ({ values, activate }: { values: Values; activate: boolean }) => {
-      const body = {
-        facts: factsFrom(values, initial.facts),
-        preferences: {
-          ...initial.preferences,
-          desired_roles: split(values.desiredRoles),
-          domain_mode: values.domainMode,
-          domains: split(values.domains),
-          criteria: values.criteria,
-          excluded_functions: split(values.excludedFunctions),
-          goals: values.goals,
-          relevance_threshold: values.threshold,
-        },
-      };
+      const body = profileFrom(values, baseline.facts, baseline.preferences);
       if (draft) {
         const saved = await profileApi.saveDraft(draft.id, draftVersion, body, csrf);
         setDraftVersion(saved.version);
         if (activate) {
-          await profileApi.activate(draft.id, saved.version, draft.base_revision, csrf);
+          await profileApi.activate(draft.id, saved.version, baseRevision, csrf);
           return true;
         }
         return false;
       }
-      await profileApi.save((initial as Snapshot).revision, body, csrf);
+      await profileApi.save(baseRevision, body, csrf);
       return true;
     },
     onSuccess: (active) => {
@@ -233,21 +302,218 @@ export function ProfileEditor({
       setMessage('');
       save.mutate({ values, activate });
     });
-  const comparison = draft?.base_profile;
+  const comparison = 'base_profile' in baseline ? baseline.base_profile : undefined;
+  const values = form.watch();
+  const latestValues = conflict
+    ? defaults(conflict.profile.facts, conflict.profile.preferences)
+    : undefined;
+  const draftValues = conflict?.draft
+    ? defaults(conflict.draft.facts, conflict.draft.preferences)
+    : undefined;
+  const changed = (Object.keys(fieldLabels) as (keyof Values)[]).filter(
+    (key) =>
+      latestValues &&
+      (JSON.stringify(values[key]) !== JSON.stringify(latestValues[key]) ||
+        (draftValues && JSON.stringify(values[key]) !== JSON.stringify(draftValues[key]))),
+  );
+  const refreshConflict = useMutation({
+    mutationFn: async () => ({
+      profile: await profileApi.profile(),
+      draft: draft ? await profileApi.draft(draft.id) : undefined,
+    }),
+    onSuccess: (result) => {
+      setConflict(result);
+      setChoices({});
+      setCompared(false);
+      reconcile.reset();
+    },
+  });
+  const reconcile = useMutation({
+    mutationFn: async () => {
+      if (!conflict || !compared || changed.some((key) => !choices[key]))
+        throw new Error('Compare all changed fields first.');
+      const selected = structuredClone(form.getValues());
+      const current = profileFrom(selected, baseline.facts, baseline.preferences);
+      let evidenceBasis = current.facts;
+      for (const key of changed) {
+        const choice = choices[key];
+        const source =
+          choice === 'profile' ? conflict.profile : choice === 'draft' ? conflict.draft : undefined;
+        if (!source) continue;
+        const sourceValues = defaults(source.facts, source.preferences);
+        Object.assign(selected, { [key]: sourceValues[key] });
+        const factKey = factFields[key];
+        if (factKey) {
+          const sourceFacts =
+            draft && choice === 'profile' ? confirmedFacts(source.facts) : source.facts;
+          evidenceBasis = { ...evidenceBasis, [factKey]: sourceFacts[factKey] };
+          if (key === 'summary') evidenceBasis.summary_evidence = sourceFacts.summary_evidence;
+        }
+      }
+      const parsed = schema.safeParse(selected);
+      if (!parsed.success)
+        throw new ApiError(
+          422,
+          'invalid_reconciliation',
+          parsed.error.issues
+            .map(
+              (issue) =>
+                `${fieldLabels[issue.path[0] as keyof Values] ?? 'Profile'}: ${issue.message}`,
+            )
+            .join(' '),
+        );
+      const body = profileFrom(parsed.data, evidenceBasis, current.preferences);
+      if (draft) {
+        const latestDraft = conflict.draft;
+        if (!latestDraft) throw new Error('The draft is unavailable.');
+        const saved = await profileApi.reconcile(
+          draft.id,
+          latestDraft.version,
+          conflict.profile.revision,
+          body,
+          csrf,
+        );
+        setBaseline(saved);
+        setDraftVersion(saved.version);
+        setBaseRevision(saved.base_revision);
+      } else {
+        setBaseline({ ...conflict.profile, ...body });
+        setBaseRevision(conflict.profile.revision);
+      }
+      form.reset(defaults(body.facts, body.preferences));
+      setConfirmed(false);
+      setConflict(undefined);
+      setCompared(false);
+      save.reset();
+      setMessage('Your choices are ready. Review the resulting profile and confirm before saving.');
+    },
+    onError: () => requestAnimationFrame(() => alert.current?.focus()),
+  });
   return (
     <form className="profile-form" onSubmit={submit(true)} noValidate>
       {save.isError && (
         <div role="alert" tabIndex={-1} ref={alert} className="error">
-          {errorMessage(save.error)} Your edits are still here. If another tab saved changes, open
-          the current profile in a new tab to compare before starting a fresh review.
+          {errorMessage(save.error)} Your edits are still here.
+          {save.error instanceof ApiError && save.error.status === 409 && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={refreshConflict.isPending}
+              onClick={() => refreshConflict.mutate()}
+            >
+              Compare saved changes
+            </Button>
+          )}
         </div>
+      )}
+      {refreshConflict.isError && <p role="alert">{errorMessage(refreshConflict.error)}</p>}
+      {conflict && latestValues && (
+        <section className="panel conflict-review" aria-labelledby="conflict-heading">
+          <h2 id="conflict-heading">Reconcile saved changes</h2>
+          <p>
+            Compare your edits with saved profile revision {conflict.profile.revision}. Choose what
+            to keep for each difference. Nothing is activated by this step.
+          </p>
+          {conflict.profile.revision_id === null && (
+            <p className="notice">
+              There is no active saved profile. Keeping your edits will let you create a new
+              reviewed profile.
+            </p>
+          )}
+          {draft && (
+            <p className="field-help">
+              Copied saved-profile facts become your confirmed corrections in this draft.
+            </p>
+          )}
+          {changed.map((key) => (
+            <fieldset className="conflict-field" key={key}>
+              <legend>{fieldLabels[key]}</legend>
+              <div className="comparison-columns">
+                <div>
+                  <h3>Your edits</h3>
+                  <p className="preserve-lines">{describe(values[key])}</p>
+                </div>
+                <div>
+                  <h3>Saved profile</h3>
+                  <p className="preserve-lines">{describe(latestValues[key])}</p>
+                </div>
+                {draftValues && (
+                  <div>
+                    <h3>Saved draft</h3>
+                    <p className="preserve-lines">{describe(draftValues[key])}</p>
+                  </div>
+                )}
+              </div>
+              <label>
+                <input
+                  type="radio"
+                  name={`resolve-${key}`}
+                  checked={choices[key] === 'mine'}
+                  onChange={() => setChoices((current) => ({ ...current, [key]: 'mine' }))}
+                />
+                Keep my {fieldLabels[key].toLowerCase()}
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name={`resolve-${key}`}
+                  checked={choices[key] === 'profile'}
+                  onChange={() => setChoices((current) => ({ ...current, [key]: 'profile' }))}
+                />
+                Use saved profile {fieldLabels[key].toLowerCase()}
+              </label>
+              {draftValues && (
+                <label>
+                  <input
+                    type="radio"
+                    name={`resolve-${key}`}
+                    checked={choices[key] === 'draft'}
+                    onChange={() => setChoices((current) => ({ ...current, [key]: 'draft' }))}
+                  />
+                  Use saved draft {fieldLabels[key].toLowerCase()}
+                </label>
+              )}
+            </fieldset>
+          ))}
+          {changed.length === 0 && <p>Your values already agree with the saved versions.</p>}
+          <label className="storage-choice">
+            <input
+              type="checkbox"
+              checked={compared}
+              onChange={(e) => setCompared(e.target.checked)}
+            />
+            I have compared these changes
+          </label>
+          {reconcile.isError && (
+            <div role="alert" ref={alert} tabIndex={-1}>
+              {errorMessage(reconcile.error)} Your edits and choices are preserved.
+            </div>
+          )}
+          <div className="button-row">
+            <Button
+              type="button"
+              disabled={!compared || changed.some((key) => !choices[key]) || reconcile.isPending}
+              onClick={() => reconcile.mutate()}
+            >
+              Continue with these choices
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={refreshConflict.isPending || reconcile.isPending}
+              onClick={() => refreshConflict.mutate()}
+            >
+              Refresh comparison
+            </Button>
+          </div>
+        </section>
       )}
       {message && (
         <p role="status" className="notice">
           {message}
         </p>
       )}
-      {draft && comparison && comparison.revision > 0 && (
+      {draft && comparison && comparison.revision_id != null && (
         <section className="panel">
           <h2>Review the changes</h2>
           <p className="muted">
@@ -578,13 +844,13 @@ export function ProfileEditor({
             <Button
               variant="secondary"
               type="button"
-              disabled={save.isPending}
+              disabled={save.isPending || !!conflict}
               onClick={submit(false)}
             >
               Save draft
             </Button>
           )}
-          <Button type="submit" disabled={!confirmed || save.isPending}>
+          <Button type="submit" disabled={!confirmed || save.isPending || !!conflict}>
             {save.isPending ? 'Saving…' : draft ? 'Approve profile' : 'Save profile'}
           </Button>
         </div>

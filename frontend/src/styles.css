@@ -805,3 +805,41 @@ details[open] > summary {
 .purge-panel button {
   justify-self: start;
 }
+.conflict-review > p {
+  margin-bottom: 20px;
+}
+.conflict-field {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 20px 0;
+  min-width: 0;
+}
+.conflict-field legend {
+  font-weight: 600;
+  padding: 0 8px;
+}
+.conflict-field label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.conflict-field input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.comparison-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 24px;
+  margin-bottom: 20px;
+}
+.comparison-columns h3 {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.comparison-columns p {
+  overflow-wrap: anywhere;
+}

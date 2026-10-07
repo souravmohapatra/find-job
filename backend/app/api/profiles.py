@@ -284,6 +284,46 @@ def edit_draft(
     return get_draft(draft_id, session, db, response)
 
 
+class DraftReconciliation(BaseModel):
+    draft_version: int
+    reviewed: bool
+    profile: ProfileInput
+
+
+@router.post("/drafts/{draft_id}/reconcile", response_model=DraftView)
+def reconcile_draft(
+    draft_id: UUID,
+    body: DraftReconciliation,
+    session: Auth,
+    db: DB,
+    response: Response,
+    if_match: Expected = None,
+) -> dict[str, Any]:
+    profile = lock_profile(db)
+    expect_revision(if_match, profile.current_revision)
+    draft = db.get(ProfileDraft, draft_id, with_for_update=True)
+    if draft is None:
+        raise problem(404, "draft_not_found", "This draft no longer exists. Start with a new CV.")
+    if draft.status != "review" or draft.version != body.draft_version:
+        raise problem(
+            409,
+            "draft_conflict",
+            "This draft changed again. Refresh the comparison; your edits are preserved.",
+        )
+    if not body.reviewed:
+        raise problem(
+            422, "review_required", "Review the saved changes before reconciling this draft."
+        )
+    document = db.get(Document, draft.document_id)
+    validate_review(body.profile, document)
+    draft.facts = body.profile.facts.model_dump(mode="json")
+    draft.preferences = body.profile.preferences.model_dump(mode="json")
+    draft.base_revision = profile.current_revision
+    draft.version += 1
+    db.commit()
+    return get_draft(draft_id, session, db, response)
+
+
 class Activation(BaseModel):
     draft_version: int
     reviewed: bool

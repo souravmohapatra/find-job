@@ -168,3 +168,68 @@ test('CV retention, original removal and explicit profile purge', async ({ page 
     [],
   );
 });
+
+test('profile conflict preserves local edits and reconciles selected saved values', async ({
+  page,
+}) => {
+  await page.goto('/profile');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByLabel('CV file')).toBeVisible();
+  const session = await (await page.request.get('/api/v1/auth/me')).json();
+  const headers = { Origin: 'http://127.0.0.1:5173', 'X-CSRF-Token': session.csrf_token };
+  const existing = await (await page.request.get('/api/v1/profile')).json();
+  const original = {
+    facts: { summary: 'Synthetic researcher' },
+    preferences: { desired_roles: ['Research'], domain_mode: 'open', goals: '' },
+  };
+  const seeded = await page.request.patch('/api/v1/profile', {
+    headers: { ...headers, 'If-Match': `"${existing.revision}"` },
+    data: original,
+  });
+  expect(seeded.ok()).toBe(true);
+  const seed = await seeded.json();
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit profile', exact: true }).click();
+  await page.getByLabel('Professional summary').fill('My local research summary');
+  const remote = await page.request.patch('/api/v1/profile', {
+    headers: { ...headers, 'If-Match': `"${seed.revision}"` },
+    data: {
+      ...original,
+      facts: { summary: 'Remote research summary' },
+      preferences: { ...original.preferences, goals: 'Work in education' },
+    },
+  });
+  expect(remote.ok()).toBe(true);
+  await page.getByLabel('I have reviewed my experience and preferences.').check();
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('changed elsewhere');
+  await expect(page.getByLabel('Professional summary')).toHaveValue('My local research summary');
+  await page.getByRole('button', { name: 'Compare saved changes' }).click();
+  await expect(page.getByRole('heading', { name: 'Reconcile saved changes' })).toBeVisible();
+  await page.getByLabel('Keep my summary', { exact: true }).check();
+  await page.getByLabel('Use saved profile goals', { exact: true }).check();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({ path: `test-results/profile-conflict-${width}.png`, fullPage: true });
+  }
+  await page.getByLabel('I have compared these changes').check();
+  await page.getByRole('button', { name: 'Continue with these choices' }).click();
+  await expect(page.getByRole('heading', { name: 'Reconcile saved changes' })).not.toBeVisible();
+  await expect(page.getByLabel('Anything else about your next role?')).toHaveValue(
+    'Work in education',
+  );
+  await expect(page.getByRole('button', { name: 'Save profile', exact: true })).toBeDisabled();
+  await page.getByLabel('I have reviewed my experience and preferences.').check();
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your reviewed profile' })).toBeVisible();
+  const result = await (await page.request.get('/api/v1/profile')).json();
+  expect(result.revision).toBe(seed.revision + 2);
+  expect(result.facts.summary).toBe('My local research summary');
+  expect(result.preferences.goals).toBe('Work in education');
+});

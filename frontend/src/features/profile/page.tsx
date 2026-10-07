@@ -290,12 +290,7 @@ export function ProfilePage() {
                 <ArrowLeft size={16} aria-hidden="true" />
                 Back to saved profile
               </Button>
-              <ProfileEditor
-                key={profile.data.revision}
-                initial={profile.data}
-                csrf={csrf}
-                onSaved={() => void saved()}
-              />
+              <ProfileEditor initial={profile.data} csrf={csrf} onSaved={() => void saved()} />
             </>
           ) : (
             <>

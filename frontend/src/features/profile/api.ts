@@ -51,6 +51,17 @@ export const profileApi = {
       csrf,
     )) as Snapshot;
   },
+  async reconcile(id: string, version: number, revision: number, body: ProfileInput, csrf: string) {
+    return (await request(
+      `/profile/drafts/${id}/reconcile`,
+      {
+        method: 'POST',
+        headers: { 'If-Match': `"${revision}"` },
+        body: JSON.stringify({ draft_version: version, reviewed: true, profile: body }),
+      },
+      csrf,
+    )) as Draft;
+  },
   async save(revision: number, body: ProfileInput, csrf: string) {
     return (await request(
       '/profile',

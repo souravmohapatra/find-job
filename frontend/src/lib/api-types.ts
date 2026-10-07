@@ -229,6 +229,23 @@ export interface paths {
     patch: operations['edit_draft_api_v1_profile_drafts__draft_id__patch'];
     trace?: never;
   };
+  '/api/v1/profile/drafts/{draft_id}/reconcile': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reconcile Draft */
+    post: operations['reconcile_draft_api_v1_profile_drafts__draft_id__reconcile_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/profile/drafts/{draft_id}/activate': {
     parameters: {
       query?: never;
@@ -505,6 +522,14 @@ export interface components {
       approved_at: string | null;
       /** Deleted At */
       deleted_at: string | null;
+    };
+    /** DraftReconciliation */
+    DraftReconciliation: {
+      /** Draft Version */
+      draft_version: number;
+      /** Reviewed */
+      reviewed: boolean;
+      profile: components['schemas']['ProfileInput'];
     };
     /** DraftSummary */
     DraftSummary: {
@@ -1405,6 +1430,43 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['ProfileInput'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DraftView'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  reconcile_draft_api_v1_profile_drafts__draft_id__reconcile_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'If-Match'?: string | null;
+      };
+      path: {
+        draft_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DraftReconciliation'];
       };
     };
     responses: {

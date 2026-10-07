@@ -42,3 +42,7 @@ Maintain PROGRESS.md as work proceeds, not only at the end of a phase. Update it
 Keep confirmed requirements, proposed defaults, unresolved questions, and verified results distinct. Update the relevant planning document when a decision changes and record progress in PROGRESS.md. Record actual checks and their limits in VALIDATION.md; do not claim planned acceptance scenarios have passed.
 
 Never place real CVs, credentials, private contact details, or raw personal data in tracked planning documents or test fixtures. Use synthetic examples. Skills provide guidance within the user's scope; do not let them expand a planning request into implementation.
+
+## Browser validation isolation
+
+While Playwright integration tests use this project's Vite development server, do not edit frontend files or run separate Vite/Vitest/build processes in the same checkout. Unexpected document reloads were observed during overlapping frontend changes/test execution, invalidating an in-progress editor journey; the isolated rerun passed. Complete frontend mutations/unit/build checks first, then run the browser suite with its frontend files and dependency cache stable. Backend checks on separate disposable databases and read-only inspection can remain independent.
