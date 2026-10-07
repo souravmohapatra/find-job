@@ -390,3 +390,108 @@ test('discovery candidate → explicit company confirmation → persisted websit
     page.getByRole('radio', { name: 'Use this page for Synthetic Discovery' }),
   ).toHaveCount(0);
 });
+
+test('mock assessment worker → broad shortlist → changed preferences', async ({ page }) => {
+  await page.goto('/companies');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Companies', exact: true })).toBeVisible();
+  const session = await (await page.request.get('/api/v1/auth/me')).json();
+  const headers = { Origin: 'http://127.0.0.1:5173', 'X-CSRF-Token': session.csrf_token };
+  const profile = await (await page.request.get('/api/v1/profile')).json();
+  const saved = await page.request.patch('/api/v1/profile', {
+    headers: { ...headers, 'If-Match': `"${profile.revision}"` },
+    data: {
+      facts: { summary: 'Synthetic candidate with planning and advisory experience.' },
+      preferences: { desired_roles: ['Strategy'] },
+    },
+  });
+  expect(saved.ok()).toBe(true);
+  const settings = await (await page.request.get('/api/v1/settings/ai')).json();
+  const matching = settings.tasks.find((task: { task: string }) => task.task === 'job_matching');
+  expect(
+    (
+      await page.request.patch('/api/v1/settings/ai', {
+        headers: { ...headers, 'If-Match': `"${matching.revision}"` },
+        data: { task: 'job_matching', config: { model: 'mock/job-matching-v1' } },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.getByLabel('Company name', { exact: true }).fill('Synthetic Entertainment');
+  await page.getByRole('button', { name: 'Follow company' }).click();
+  await expect(page).toHaveURL(/\/companies\/[0-9a-f-]{36}$/);
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic Entertainment', exact: true }),
+  ).toBeVisible();
+  const companyId = new URL(page.url()).pathname.split('/').at(-1)!;
+  await page.getByLabel('Job board provider').selectOption('lever');
+  await page.getByLabel('Board identifier').fill('synthetic-matching');
+  await page.getByLabel('I checked that this board belongs to this company').check();
+  await page.getByRole('button', { name: 'Add source' }).click();
+  await expect(page.getByRole('heading', { name: 'lever source' })).toBeVisible();
+  execFileSync('../backend/.venv/bin/python', [
+    '../scripts/seed-browser-jobs.py',
+    companyId,
+    '--matching',
+  ]);
+  const inventoryPath = `/api/v1/jobs?view=all&company_id=${companyId}`;
+  await expect
+    .poll(
+      async () => {
+        const inventory = await (await page.request.get(inventoryPath)).json();
+        return inventory.items.filter(
+          (job: { assessment_status: string }) => job.assessment_status === 'assessed',
+        ).length;
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(3);
+  await page.goto(`/jobs?company_id=${companyId}`);
+  await expect(page.getByRole('link', { name: 'Strategy manager', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Business transformation lead', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Legal adviser', exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Business transformation lead', exact: true }).click();
+  await expect(page.getByText('Possible', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Mock result for development/)).toBeVisible();
+  await page.getByText('Supporting evidence', { exact: true }).first().click();
+  await expect(
+    page
+      .getByText('Plan organisational transformation in a new industry.', { exact: true })
+      .first(),
+  ).toBeVisible();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/assessment-${width}.png`, fullPage: true });
+  }
+  await page.goto('/profile');
+  await page.getByRole('button', { name: 'Edit profile' }).click();
+  await page.getByLabel('Desired roles or functions — one per line').fill('Legal advice');
+  await page.getByLabel('I have reviewed my experience and preferences.').check();
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+  await expect(page.getByText('Legal advice', { exact: true })).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const shortlist = await (
+          await page.request.get(`/api/v1/jobs?company_id=${companyId}`)
+        ).json();
+        return shortlist.items.map((job: { posting: { title: string } }) => job.posting.title);
+      },
+      { timeout: 60_000 },
+    )
+    .toEqual(['Legal adviser']);
+  await page.goto(`/jobs?company_id=${companyId}`);
+  await expect(page.getByRole('link', { name: 'Legal adviser', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'All jobs', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Strategy manager', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Business transformation lead', exact: true }),
+  ).toBeVisible();
+});

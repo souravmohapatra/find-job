@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="JOBFINDER_")
     environment: Literal["development", "test", "production"] = "production"
     integration_mode: Literal["mock", "live"] = "mock"
+    mock_ai_dir: Path | None = None
     database_url: SecretStr | None = None
     db_host: str = "db"
     db_name: str = "jobfinder"
@@ -31,6 +32,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_security(self) -> "Settings":
+        if self.environment == "production" and self.mock_ai_dir is not None:
+            raise ValueError("Synthetic AI fixtures are development-only")
         if self.environment == "production" and not self.secure_cookies:
             raise ValueError("Production requires secure session cookies")
         if "*" in self.allowed_origins or "*" in self.allowed_hosts:

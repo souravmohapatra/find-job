@@ -70,8 +70,12 @@ def operation_response(operation: Operation, resource_id: UUID) -> dict[str, str
 def process_operation(operation_id: UUID) -> None:
     token = uuid4()
     with Session(get_engine()) as db, db.begin():
+        # A queue entry can be consumed before dispatch commits its intent-row lock.
+        # Skipping that row would falsely acknowledge the queue job without claiming work.
+        # Bound the wait; a longer database stall leaves the durable intent for recovery.
+        db.execute(text("SET LOCAL lock_timeout = '10s'"))
         operation = db.scalar(
-            select(Operation).where(Operation.id == operation_id).with_for_update(skip_locked=True)
+            select(Operation).where(Operation.id == operation_id).with_for_update()
         )
         if operation is None or operation.state in {"succeeded", "failed", "blocked", "cancelled"}:
             return

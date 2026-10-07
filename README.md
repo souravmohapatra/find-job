@@ -71,3 +71,12 @@ Live mode reads the key from `JOBFINDER_OPENROUTER_KEY_FILE` (default `/run/secr
 Usage records store configuration/generation/model IDs, token counts and cost metadata, not CV prompts or model responses. Unknown-cost requests retain their reservation and pause that task. Settings provides provider billing lookup when a generation ID is known and explicit owner-verified cost entry otherwise. Enter zero only after verifying that the provider did not charge. Recovery records cost provenance and releases the unresolved hold; it never automatically retries the AI request.
 
 The Profile page's “CV storage and profile data” section lists originals, lets you change retention, and confirms removal of a single original/raw extraction while preserving facts. Full profile deletion requires typing `DELETE PROFILE`; it clears profile history, drafts and originals. Minimal billing metadata remains, and existing backups expire separately. Cancelled analysis cannot dispatch another request; an external request already underway cannot be recalled.
+
+
+## Synthetic matching workflow
+
+`npm --prefix frontend run test:integration -- --grep 'mock assessment worker'` exercises real local inventory persistence, durable dispatch, AI-queue workers, versioned assessments, shortlist/explanations and preference-triggered reassessment. Source postings and model responses are synthetic; it does not fetch a real employer or evaluate a live model.
+
+The browser fixture writes the authored examples from `backend/tests/synthetic_matching.py` into a temporary directory and configures `JOBFINDER_MOCK_AI_DIR`. It accelerates durable dispatch to every two seconds; application minute scheduling is unchanged. Model mapping is explicitly `mock/job-matching-v1`. Both Relevant and Possible roles appear for the initial preferences; changing the role family changes the current shortlist while retaining every job in All jobs.
+
+Fixture replay is opt-in and development/test only. It requires exact task input, model, system prompt, prompt version and schema version, then runs normal schema/evidence validation. Unknown inputs stop with `mock_fixture_missing`; invalid fixtures stop with `mock_fixture_invalid`. No provider request or billing reservation is made for replay. Production refuses the fixture directory setting, and live inference refuses `mock/` models. Do not use these authored decisions as evidence of matching quality for a real CV.

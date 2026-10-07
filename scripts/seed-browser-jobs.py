@@ -46,6 +46,11 @@ with Session(engine) as db, db.begin():
         )
         for slug, title in [("strategy", "Strategy manager"), ("legal", "Legal adviser")]
     ]
+    if "--matching" in sys.argv[2:]:
+        sys.path.insert(0, str(root / "backend/tests"))
+        from synthetic_matching import POSTINGS
+
+        postings = POSTINGS
     apply_page(
         db,
         UUID(operation.parameters["run_id"]),

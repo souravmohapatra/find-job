@@ -445,6 +445,17 @@ def infer[T: BaseModel](
             "document.",
             blocked=True,
         )
+    settings = get_settings()
+    if settings.integration_mode == "mock" and settings.mock_ai_dir is not None:
+        from app.ai.fixtures import replay
+
+        return replay(
+            task, config.model, system, payload, output, validate, prompt_version, schema_version
+        )
+    if settings.integration_mode == "live" and config.model.startswith("mock/"):
+        raise OperationError(
+            "mock_model", "Choose a real model before enabling live inference.", blocked=True
+        )
     with client() as http:
         try:
             tags = endpoint_tags(http, config)

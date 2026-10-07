@@ -86,7 +86,6 @@ def assess(
     operation_id: UUID | None,
 ) -> Assessment:
     spans = evidence(facts, preferences, posting)
-    lookup = {span.id: span.text for span in spans}
 
     def check(result: Assessment) -> None:
         validate(result, preferences, spans)
@@ -97,19 +96,25 @@ def assess(
         config_id,
         operation_id,
         PROMPT,
-        {
-            "spans": [span.model_dump() for span in spans],
-            "preference_rules": [
-                {
-                    **criterion.model_dump(mode="json"),
-                    "description": lookup[f"preference:{criterion.id}"],
-                }
-                for criterion in preferences.criteria
-            ],
-            "policy_version": POLICY_VERSION,
-        },
+        task_input(facts, preferences, posting),
         Assessment,
         check,
         prompt_version="matching-v1",
         schema_version="matching-v1",
     )
+
+
+def task_input(facts: Facts, preferences: Preferences, posting: Posting) -> dict[str, Any]:
+    spans = evidence(facts, preferences, posting)
+    lookup = {span.id: span.text for span in spans}
+    return {
+        "spans": [span.model_dump() for span in spans],
+        "preference_rules": [
+            {
+                **criterion.model_dump(mode="json"),
+                "description": lookup[f"preference:{criterion.id}"],
+            }
+            for criterion in preferences.criteria
+        ],
+        "policy_version": POLICY_VERSION,
+    }

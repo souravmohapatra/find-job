@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -35,6 +36,11 @@ stop = threading.Event()
 signal.signal(signal.SIGTERM, lambda *_: stop.set())
 signal.signal(signal.SIGINT, lambda *_: stop.set())
 with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
+    sys.path.insert(0, str(root / "backend/tests"))
+    from synthetic_matching import write_fixtures
+
+    fixture_dir = Path(directory) / "ai-fixtures"
+    write_fixtures(fixture_dir)
     os.environ.update(
         {
             "JOBFINDER_DATABASE_URL": (
@@ -44,6 +50,7 @@ with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
             "JOBFINDER_ENVIRONMENT": "development",
             "JOBFINDER_INTEGRATION_MODE": "mock",
             "JOBFINDER_SEARCH_MODE": "mock",
+            "JOBFINDER_MOCK_AI_DIR": str(fixture_dir),
             "JOBFINDER_ALLOWED_ORIGINS": '["http://127.0.0.1:5173"]',
             "JOBFINDER_ALLOWED_HOSTS": '["127.0.0.1","localhost"]',
             "JOBFINDER_SECURE_COOKIES": "false",
@@ -54,7 +61,8 @@ with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
     command.upgrade(Config("alembic.ini"), "head")
     from app.cli import create_owner
     from app.db import get_engine
-    from app.tasks.worker import bootstrap_queue
+    from app.tasks.worker import app as queue_app
+    from app.tasks.worker import bootstrap_queue, dispatch
 
     bootstrap_queue()
     with get_engine().begin() as connection:
@@ -99,7 +107,13 @@ with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
                 ]
             )
         )
+        last_dispatch = 0.0
         while not stop.wait(0.2):
+            # Exercise real durable dispatch/worker code with a faster fixture clock.
+            if time.monotonic() - last_dispatch >= 2:
+                with queue_app.open():
+                    dispatch()
+                last_dispatch = time.monotonic()
             if any(child.poll() is not None for child in children):
                 raise SystemExit("A browser fixture process stopped unexpectedly.")
     finally:
