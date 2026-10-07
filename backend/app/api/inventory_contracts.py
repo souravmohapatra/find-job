@@ -104,3 +104,23 @@ class JobDetail(JobView):
 
 Availability = Literal["all", "active", "closed", "unknown"]
 PageSize = Annotated[int, Field(ge=1, le=100)]
+
+
+class DiscoveryCandidate(BaseModel):
+    url: str
+    title: str
+    employer: str | None
+    source_url: str
+    evidence_path: str
+    status: str
+
+
+class DiscoveryView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    state: str
+    cursor: int
+    issues: list[str]
+    candidates: list[DiscoveryCandidate]
+    started_at: datetime
+    finished_at: datetime | None

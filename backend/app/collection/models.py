@@ -129,3 +129,24 @@ class CollectionPage(Base):
     offset: Mapped[int] = mapped_column(primary_key=True)
     operation_id: Mapped[UUID] = mapped_column(ForeignKey("operation_intents.id"), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DiscoveryRun(Base):
+    __tablename__ = "discovery_runs"
+    __table_args__ = (
+        Index("ix_discovery_company_state", "company_id", "state"),
+        CheckConstraint(
+            "state IN ('running','complete','partial','cancelled','expired')",
+            name="discovery_state",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"))
+    company_revision: Mapped[int]
+    state: Mapped[str] = mapped_column(String(20), default="running")
+    frontier: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    cursor: Mapped[int] = mapped_column(default=0)
+    issues: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

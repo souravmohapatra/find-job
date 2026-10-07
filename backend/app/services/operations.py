@@ -91,8 +91,12 @@ def process_operation(operation_id: UUID) -> None:
             from app.services.profiles import analyze_document
 
             result = analyze_document(UUID(parameters["document_id"]), operation_id, parameters)
-        elif kind == "company_check":
+        elif kind in {"company_check", "company_discover"}:
             pass  # Fan-out is committed with completion after the lease is checked.
+        elif kind == "discovery_step":
+            from app.collection.discovery import prepare
+
+            discovery_result = prepare(UUID(parameters["run_id"]), parameters["cursor"])
         elif kind == "source_collect":
             from app.collection.runner import prepare_page
 
@@ -121,6 +125,21 @@ def process_operation(operation_id: UUID) -> None:
 
                 save_analysis(db, UUID(parameters["document_id"]), result)
             check_progress = None
+            if kind == "company_discover":
+                from app.collection.discovery import begin
+                from app.collection.models import Company
+
+                company = db.get(Company, UUID(parameters["company_id"]), with_for_update=True)
+                pending = begin(db, company) if company else None
+                check_progress = (
+                    "Discovery queued or already pending."
+                    if pending
+                    else "Discovery needs a website, or the company is paused."
+                )
+            if kind == "discovery_step":
+                from app.collection.discovery import apply
+
+                apply(db, UUID(parameters["run_id"]), parameters["cursor"], discovery_result)
             if kind == "company_check":
                 from app.collection.inventory import begin_run
                 from app.collection.models import Company, Source
@@ -197,6 +216,15 @@ def process_operation(operation_id: UUID) -> None:
                     failure.code,
                     terminal=operation.state != "queued",
                     retry_after=failure.retry_after,
+                )
+            if kind == "discovery_step" and operation.state != "queued":
+                from app.collection.discovery import DiscoveryResult, apply
+
+                apply(
+                    db,
+                    UUID(parameters["run_id"]),
+                    parameters["cursor"],
+                    DiscoveryResult(issues=[failure.code]),
                 )
             operation.progress = failure.message
             operation.lease_until = None

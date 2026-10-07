@@ -126,6 +126,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/companies/{identifier}/discovery': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Discovery History */
+    get: operations['discovery_history_api_v1_companies__identifier__discovery_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/jobs': {
     parameters: {
       query?: never;
@@ -768,6 +785,44 @@ export interface components {
        * @enum {string}
        */
       strength: 'preferred' | 'required';
+    };
+    /** DiscoveryCandidate */
+    DiscoveryCandidate: {
+      /** Url */
+      url: string;
+      /** Title */
+      title: string;
+      /** Employer */
+      employer: string | null;
+      /** Source Url */
+      source_url: string;
+      /** Evidence Path */
+      evidence_path: string;
+      /** Status */
+      status: string;
+    };
+    /** DiscoveryView */
+    DiscoveryView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** State */
+      state: string;
+      /** Cursor */
+      cursor: number;
+      /** Issues */
+      issues: string[];
+      /** Candidates */
+      candidates: components['schemas']['DiscoveryCandidate'][];
+      /**
+       * Started At
+       * Format: date-time
+       */
+      started_at: string;
+      /** Finished At */
+      finished_at: string | null;
     };
     /** DocumentPage */
     DocumentPage: {
@@ -1815,6 +1870,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['RunView'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  discovery_history_api_v1_companies__identifier__discovery_get: {
+    parameters: {
+      query?: {
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        identifier: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiscoveryView'][];
         };
       };
       /** @description Validation Error */

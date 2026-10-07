@@ -7,6 +7,7 @@ from app.api.inventory_contracts import (
     CompanyInput,
     CompanyPage,
     CompanyView,
+    DiscoveryView,
     RunView,
     SourceEdit,
     SourceInput,
@@ -15,7 +16,7 @@ from app.api.inventory_contracts import (
 from app.auth import DB, Auth
 from app.collection.ats import request_url
 from app.collection.inventory import key
-from app.collection.models import CollectionRun, Company, Source
+from app.collection.models import CollectionRun, Company, DiscoveryRun, Source
 from app.errors import problem
 from app.profile_models import Operation, now
 from app.services.operations import create_operation, operation_response, request_hash
@@ -202,6 +203,22 @@ def runs(
             select(CollectionRun)
             .where(CollectionRun.source_id == identifier)
             .order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc())
+            .offset(offset)
+            .limit(20)
+        )
+    )
+
+
+@router.get("/companies/{identifier}/discovery", response_model=list[DiscoveryView])
+def discovery_history(
+    identifier: UUID, session: Auth, db: DB, offset: int = Query(0, ge=0)
+) -> list[DiscoveryRun]:
+    company_row(db, identifier)
+    return list(
+        db.scalars(
+            select(DiscoveryRun)
+            .where(DiscoveryRun.company_id == identifier)
+            .order_by(DiscoveryRun.started_at.desc(), DiscoveryRun.id.desc())
             .offset(offset)
             .limit(20)
         )

@@ -61,7 +61,7 @@ def dispatch() -> int:
                 "ai"
                 if operation.kind in {"profile_ingest", "ai_validate", "ai_reconcile"}
                 else "fetch"
-                if operation.kind == "source_collect"
+                if operation.kind in {"source_collect", "discovery_step"}
                 else "control"
             )
             # Execution locks + the business lease make duplicate dispatch harmless.
@@ -78,10 +78,15 @@ def dispatch() -> int:
 @app.periodic(cron="* * * * *")
 @app.task(name="jobfinder.dispatch", queue="control")
 def tick(timestamp: int) -> None:
+    from app.collection.discovery import schedule
     from app.collection.inventory import schedule_due
 
     with Session(get_engine()) as db, db.begin():
         schedule_due(db)
+    # Collection finalization locks company before source. Release scheduling
+    # source locks before discovery takes company locks to avoid inversion.
+    with Session(get_engine()) as db, db.begin():
+        schedule(db)
     dispatch()
 
 
