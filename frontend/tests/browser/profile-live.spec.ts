@@ -495,3 +495,56 @@ test('mock assessment worker → broad shortlist → changed preferences', async
     page.getByRole('link', { name: 'Business transformation lead', exact: true }),
   ).toBeVisible();
 });
+
+test('real notification schedule → reload → explicit test delivery', async ({ page }) => {
+  await page.goto('/settings');
+  await page.getByLabel('Username').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  const panel = page.getByRole('region', { name: 'Notifications', exact: true });
+  await expect(panel.getByText('Development mode: no notification will be sent.')).toBeVisible();
+  await panel.getByLabel('Send a daily summary', { exact: true }).check();
+  await panel.getByLabel('Daily summary time').fill('19:15');
+  await panel.getByLabel('Timezone').fill('Asia/Kolkata');
+  await panel.getByLabel('Send a summary even when there are no new roles').uncheck();
+  await panel.getByRole('button', { name: 'Save notification schedule' }).click();
+  await expect(panel.getByText('Notification schedule saved.')).toBeVisible();
+  await expect(panel.getByText(/Next scheduled summary:/)).toContainText('Asia/Kolkata');
+  await page.reload();
+  await expect(panel.getByLabel('Daily summary time')).toHaveValue('19:15');
+  await expect(panel.getByLabel('Timezone')).toHaveValue('Asia/Kolkata');
+  await expect(
+    panel.getByLabel('Send a summary even when there are no new roles'),
+  ).not.toBeChecked();
+  const result = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/settings/notifications/test') &&
+      response.request().method() === 'POST',
+  );
+  await panel.getByRole('button', { name: 'Test notification', exact: true }).click();
+  const accepted = await (await result).json();
+  await expect(panel.getByText('Development mode: no message was sent.')).toBeVisible({
+    timeout: 30000,
+  });
+  const delivery = await (
+    await page.request.get(`/api/v1/notifications/deliveries/${accepted.resource_id}`)
+  ).json();
+  expect(delivery.state).toBe('failed');
+  expect(delivery.error_code).toBe('notification_mock_mode');
+  expect(delivery.remote_id).toBeNull();
+  await panel.getByText('Delivery history', { exact: true }).click();
+  for (const width of [375, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await panel.screenshot({ path: `test-results/notifications-${width}.png` });
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 812, height: 375 });
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+  });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

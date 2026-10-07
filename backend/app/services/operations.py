@@ -100,7 +100,11 @@ def process_operation(operation_id: UUID) -> None:
         elif kind == "digest_deliver":
             from app.notifications.delivery import deliver
 
-            deliver(operation_id, token, UUID(parameters["digest_id"]))
+            deliver(
+                operation_id,
+                token,
+                UUID(parameters["digest_id"]) if parameters.get("digest_id") else None,
+            )
         elif kind == "job_assess":
             from app.services.matching import prepare as prepare_assessment
 

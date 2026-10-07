@@ -2124,6 +2124,186 @@
         }
       }
     },
+    "/api/v1/notifications/{digest_id}/resend": {
+      "post": {
+        "tags": ["notifications"],
+        "summary": "Resend",
+        "operationId": "resend_api_v1_notifications__digest_id__resend_post",
+        "parameters": [
+          {
+            "name": "digest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Digest Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/notifications/test": {
+      "post": {
+        "tags": ["notifications"],
+        "summary": "Test Notification",
+        "operationId": "test_notification_api_v1_settings_notifications_test_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/notifications/tests": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "Recent Tests",
+        "operationId": "recent_tests_api_v1_settings_notifications_tests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryView"
+                  },
+                  "type": "array",
+                  "title": "Response Recent Tests Api V1 Settings Notifications Tests Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/deliveries/{delivery_id}": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "Delivery Status",
+        "operationId": "delivery_status_api_v1_notifications_deliveries__delivery_id__get",
+        "parameters": [
+          {
+            "name": "delivery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Delivery Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "summary": "Live",
@@ -2880,6 +3060,19 @@
             "type": "integer",
             "title": "Attempt"
           },
+          "batch_attempt": {
+            "type": "integer",
+            "title": "Batch Attempt"
+          },
+          "manual": {
+            "type": "boolean",
+            "title": "Manual"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deadline At"
+          },
           "state": {
             "type": "string",
             "enum": ["pending", "sending", "sent", "failed", "unknown"],
@@ -2946,6 +3139,9 @@
         "required": [
           "id",
           "attempt",
+          "batch_attempt",
+          "manual",
+          "deadline_at",
           "state",
           "retryable",
           "error_code",
@@ -3034,6 +3230,10 @@
       },
       "DigestView": {
         "properties": {
+          "content_removed": {
+            "type": "boolean",
+            "title": "Content Removed"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -3088,6 +3288,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "content_removed",
           "id",
           "local_date",
           "cutoff",
@@ -4057,6 +4258,15 @@
             "title": "Include Empty",
             "default": true
           },
+          "delivery_mode": {
+            "type": "string",
+            "enum": ["mock", "live"],
+            "title": "Delivery Mode"
+          },
+          "publisher_configured": {
+            "type": "boolean",
+            "title": "Publisher Configured"
+          },
           "revision": {
             "type": "integer",
             "title": "Revision"
@@ -4088,7 +4298,13 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": ["revision", "next_due_at", "next_date"],
+        "required": [
+          "delivery_mode",
+          "publisher_configured",
+          "revision",
+          "next_due_at",
+          "next_date"
+        ],
         "title": "NotificationSettingsView"
       },
       "OperationAccepted": {
@@ -4479,6 +4695,31 @@
         "type": "object",
         "required": ["text", "evidence"],
         "title": "Reason"
+      },
+      "ResendRequest": {
+        "properties": {
+          "expected_delivery_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Delivery Id"
+          },
+          "accept_possible_duplicate": {
+            "type": "boolean",
+            "title": "Accept Possible Duplicate",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["expected_delivery_id"],
+        "title": "ResendRequest"
       },
       "RetentionChange": {
         "properties": {

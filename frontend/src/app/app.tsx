@@ -1,6 +1,7 @@
 import { CompaniesPage, CompanyPage } from '../features/inventory/companies';
 import { JobsPage, JobPage } from '../features/inventory/jobs';
 import { AiSettings } from '../features/settings/ai';
+import { NotificationSettings } from '../features/settings/notifications';
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
@@ -121,6 +122,7 @@ function Settings() {
           </dl>
         )}
       </section>
+      <NotificationSettings />
       <AiSettings />
     </>
   );

@@ -24,6 +24,8 @@ class NotificationPreferences(Contract):
 
 
 class NotificationSettingsView(NotificationPreferences):
+    delivery_mode: Literal["mock", "live"]
+    publisher_configured: bool
     revision: int
     next_due_at: datetime | None
     next_date: date | None
@@ -62,6 +64,9 @@ class DigestSnapshot(Contract):
 class DeliveryView(Contract):
     id: UUID
     attempt: int
+    batch_attempt: int
+    manual: bool
+    deadline_at: datetime
     state: Literal["pending", "sending", "sent", "failed", "unknown"]
     retryable: bool
     error_code: str | None
@@ -72,6 +77,7 @@ class DeliveryView(Contract):
 
 
 class DigestView(Contract):
+    content_removed: bool
     id: UUID
     local_date: date
     cutoff: datetime
@@ -87,3 +93,8 @@ class DigestView(Contract):
 class DigestHistory(Contract):
     items: list[DigestView]
     next_before: date | None
+
+
+class ResendRequest(Contract):
+    expected_delivery_id: UUID | None
+    accept_possible_duplicate: bool = False

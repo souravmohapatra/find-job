@@ -45,9 +45,15 @@ export function ProfileData({ csrf, onPurged }: { csrf: string; onPurged: () => 
     onSuccess: async () => {
       client.removeQueries({
         predicate: (query) =>
-          ['profile', 'profile-documents', 'profile-draft', 'operation', 'job', 'jobs'].includes(
-            String(query.queryKey[0]),
-          ),
+          [
+            'profile',
+            'profile-documents',
+            'profile-draft',
+            'operation',
+            'job',
+            'jobs',
+            'notification-history',
+          ].includes(String(query.queryKey[0])),
       });
       client.getMutationCache().clear();
       await client.invalidateQueries({ queryKey: ['status'] });
@@ -164,8 +170,8 @@ export function ProfileData({ csrf, onPurged }: { csrf: string; onPurged: () => 
           <summary>Delete profile and all CV data</summary>
           <p>
             This removes the active profile, its history, drafts, original CVs, job assessments and
-            feedback notes. Existing backups follow their separate retention policy. Billing
-            metadata is retained without CV content.
+            feedback notes and notification summary contents. Existing backups follow their separate
+            retention policy. Billing metadata is retained without CV content.
           </p>
           <form
             onSubmit={(e) => {

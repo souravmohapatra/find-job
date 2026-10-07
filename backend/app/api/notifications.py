@@ -2,10 +2,14 @@
 
 from datetime import date
 from typing import Annotated
+from uuid import UUID
 
 from app.api.ai import check_revision
-from app.api.profiles import Expected
+from app.api.contracts import OperationAccepted
+from app.api.profiles import Expected, Key
 from app.auth import DB, Auth
+from app.config import get_settings
+from app.errors import problem
 from app.notifications.contracts import (
     DeliveryView,
     DigestHistory,
@@ -13,10 +17,12 @@ from app.notifications.contracts import (
     DigestView,
     NotificationPreferences,
     NotificationSettingsView,
+    ResendRequest,
 )
 from app.notifications.ledger import advance
 from app.notifications.models import Delivery, Digest, NotificationSettings
-from app.profile_models import now
+from app.notifications.transport import origin
+from app.profile_models import Operation, now
 from fastapi import APIRouter, Query, Response
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import aliased
@@ -25,10 +31,26 @@ router = APIRouter(tags=["notifications"])
 
 
 def view(row: NotificationSettings | None) -> NotificationSettingsView:
+    config = get_settings()
+    ready = bool(
+        config.ntfy_url
+        and origin(config.ntfy_url)
+        and config.notification_app_url
+        and origin(config.notification_app_url)
+        and config.ntfy_token_file.is_file()
+    )
     if row is None:
-        return NotificationSettingsView(revision=0, next_date=None, next_due_at=None)
+        return NotificationSettingsView(
+            revision=0,
+            next_date=None,
+            next_due_at=None,
+            delivery_mode=config.notification_mode,
+            publisher_configured=ready,
+        )
     return NotificationSettingsView(
         revision=row.revision,
+        delivery_mode=config.notification_mode,
+        publisher_configured=ready,
         enabled=row.enabled,
         timezone=row.timezone,
         local_time=row.local_time,
@@ -104,6 +126,7 @@ def history(
     return DigestHistory(
         items=[
             DigestView(
+                content_removed=not bool(row.snapshot),
                 id=row.id,
                 local_date=row.local_date,
                 cutoff=row.cutoff,
@@ -121,3 +144,58 @@ def history(
         ],
         next_before=rows[limit - 1].local_date if len(rows) > limit else None,
     )
+
+
+@router.post("/notifications/{digest_id}/resend", response_model=OperationAccepted, status_code=202)
+def resend(
+    digest_id: UUID,
+    body: ResendRequest,
+    session: Auth,
+    db: DB,
+    idempotency_key: Key = None,
+) -> dict[str, str]:
+    from app.notifications.actions import request
+
+    result = request(
+        db, idempotency_key, digest_id, body.expected_delivery_id, body.accept_possible_duplicate
+    )
+    db.commit()
+    return result
+
+
+@router.post("/settings/notifications/test", response_model=OperationAccepted, status_code=202)
+def test_notification(session: Auth, db: DB, idempotency_key: Key = None) -> dict[str, str]:
+    from app.notifications.actions import request
+
+    result = request(db, idempotency_key)
+    db.commit()
+    return result
+
+
+@router.get("/settings/notifications/tests", response_model=list[DeliveryView])
+def recent_tests(session: Auth, db: DB) -> list[DeliveryView]:
+    prior = aliased(Delivery)
+    latest_batch = (
+        select(func.max(prior.batch_attempt))
+        .where(prior.group_id == Delivery.group_id)
+        .scalar_subquery()
+    )
+    rows = db.scalars(
+        select(Delivery)
+        .join(Operation, Operation.id == Delivery.operation_id)
+        .where(
+            Delivery.digest_id.is_(None),
+            Delivery.batch_attempt == latest_batch,
+        )
+        .order_by(Operation.created_at.desc(), Delivery.id)
+        .limit(20)
+    )
+    return [DeliveryView.model_validate(row, from_attributes=True) for row in rows]
+
+
+@router.get("/notifications/deliveries/{delivery_id}", response_model=DeliveryView)
+def delivery_status(delivery_id: UUID, session: Auth, db: DB) -> DeliveryView:
+    row = db.get(Delivery, delivery_id)
+    if row is None:
+        raise problem(404, "delivery_not_found", "This delivery could not be found.")
+    return DeliveryView.model_validate(row, from_attributes=True)

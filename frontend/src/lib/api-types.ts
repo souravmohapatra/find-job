@@ -624,6 +624,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/notifications/{digest_id}/resend': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resend */
+    post: operations['resend_api_v1_notifications__digest_id__resend_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/settings/notifications/test': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test Notification */
+    post: operations['test_notification_api_v1_settings_notifications_test_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/settings/notifications/tests': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Recent Tests */
+    get: operations['recent_tests_api_v1_settings_notifications_tests_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/notifications/deliveries/{delivery_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Delivery Status */
+    get: operations['delivery_status_api_v1_notifications_deliveries__delivery_id__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/health/live': {
     parameters: {
       query?: never;
@@ -1001,6 +1069,15 @@ export interface components {
       id: string;
       /** Attempt */
       attempt: number;
+      /** Batch Attempt */
+      batch_attempt: number;
+      /** Manual */
+      manual: boolean;
+      /**
+       * Deadline At
+       * Format: date-time
+       */
+      deadline_at: string;
       /**
        * State
        * @enum {string}
@@ -1066,6 +1143,8 @@ export interface components {
     };
     /** DigestView */
     DigestView: {
+      /** Content Removed */
+      content_removed: boolean;
       /**
        * Id
        * Format: uuid
@@ -1541,6 +1620,13 @@ export interface components {
        * @default true
        */
       include_empty: boolean;
+      /**
+       * Delivery Mode
+       * @enum {string}
+       */
+      delivery_mode: 'mock' | 'live';
+      /** Publisher Configured */
+      publisher_configured: boolean;
       /** Revision */
       revision: number;
       /** Next Due At */
@@ -1685,6 +1771,16 @@ export interface components {
       text: string;
       /** Evidence */
       evidence: components['schemas']['Evidence'][];
+    };
+    /** ResendRequest */
+    ResendRequest: {
+      /** Expected Delivery Id */
+      expected_delivery_id: string | null;
+      /**
+       * Accept Possible Duplicate
+       * @default false
+       */
+      accept_possible_duplicate: boolean;
     };
     /** RetentionChange */
     RetentionChange: {
@@ -3366,6 +3462,125 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['DigestHistory'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  resend_api_v1_notifications__digest_id__resend_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'Idempotency-Key'?: string | null;
+      };
+      path: {
+        digest_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ResendRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OperationAccepted'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  test_notification_api_v1_settings_notifications_test_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'Idempotency-Key'?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OperationAccepted'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  recent_tests_api_v1_settings_notifications_tests_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeliveryView'][];
+        };
+      };
+    };
+  };
+  delivery_status_api_v1_notifications_deliveries__delivery_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        delivery_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeliveryView'];
         };
       };
       /** @description Validation Error */

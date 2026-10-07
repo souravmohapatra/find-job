@@ -129,7 +129,7 @@ def publish(destination: dict[str, Any], body: str) -> Outcome:
                 content=body.encode("utf-8"),
                 headers={
                     "Authorization": "Bearer " + token,
-                    "Title": "Job Finder daily summary",
+                    "Title": "Job Finder notification",
                     "Click": app_url.rstrip("/") + "/jobs",
                     "Content-Type": "text/plain; charset=utf-8",
                 },

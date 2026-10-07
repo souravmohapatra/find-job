@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from app.db import Base
 from app.profile_models import now
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -84,13 +84,18 @@ class Delivery(Base):
             "state IN ('pending','sending','sent','failed','unknown')", name="delivery_state"
         ),
         Index("ix_delivery_due", "state", "available_at"),
+        UniqueConstraint("group_id", "batch_attempt", name="uq_delivery_batch_attempt"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    digest_id: Mapped[UUID] = mapped_column(
+    digest_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("notification_digests.id", ondelete="CASCADE"), index=True
     )
     operation_id: Mapped[UUID] = mapped_column(ForeignKey("operation_intents.id"), unique=True)
     attempt: Mapped[int]
+    group_id: Mapped[UUID] = mapped_column(index=True)
+    batch_attempt: Mapped[int]
+    manual: Mapped[bool] = mapped_column(default=False)
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     state: Mapped[str] = mapped_column(String(20), default="pending")
     target: Mapped[dict[str, Any]] = mapped_column(JSONB)
     retryable: Mapped[bool] = mapped_column(default=False)

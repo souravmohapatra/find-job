@@ -50,6 +50,7 @@ with tempfile.TemporaryDirectory(prefix="jobfinder-browser-") as directory:
             "JOBFINDER_ENVIRONMENT": "development",
             "JOBFINDER_INTEGRATION_MODE": "mock",
             "JOBFINDER_SEARCH_MODE": "mock",
+            "JOBFINDER_NOTIFICATION_MODE": "mock",
             "JOBFINDER_MOCK_AI_DIR": str(fixture_dir),
             "JOBFINDER_ALLOWED_ORIGINS": '["http://127.0.0.1:5173"]',
             "JOBFINDER_ALLOWED_HOSTS": '["127.0.0.1","localhost"]',

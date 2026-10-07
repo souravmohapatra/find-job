@@ -967,3 +967,68 @@ details[open] > summary {
 .assessment-panel q {
   overflow-wrap: anywhere;
 }
+
+.notification-settings > p {
+  margin: 0.75rem 0 1.25rem;
+}
+.notification-settings .checkbox-label {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 44px;
+}
+.notification-settings .checkbox-label input {
+  flex-shrink: 0;
+}
+.notification-fields {
+  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.notification-form .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.notification-test,
+.notification-history {
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
+}
+.notification-settings h3 {
+  font-size: 1rem;
+  font-weight: 650;
+  margin-bottom: 0.5rem;
+}
+.notification-settings .field-help {
+  margin: 0.5rem 0 0.75rem;
+}
+.notification-status {
+  margin-top: 1rem;
+}
+.notification-digest {
+  border-top: 1px solid var(--border);
+  padding: 1.25rem 0;
+  overflow-wrap: anywhere;
+}
+.notification-digest ul {
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+.notification-resend {
+  margin-top: 1rem;
+}
+.notification-resend button {
+  margin: 0.5rem 0;
+}
+@media (max-width: 600px) {
+  .notification-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
