@@ -91,6 +91,8 @@ def process_operation(operation_id: UUID) -> None:
             from app.services.profiles import analyze_document
 
             result = analyze_document(UUID(parameters["document_id"]), operation_id, parameters)
+        elif kind == "company_check":
+            pass  # Fan-out is committed with completion after the lease is checked.
         elif kind == "source_collect":
             from app.collection.runner import prepare_page
 
@@ -118,6 +120,27 @@ def process_operation(operation_id: UUID) -> None:
                 from app.services.profiles import save_analysis
 
                 save_analysis(db, UUID(parameters["document_id"]), result)
+            check_progress = None
+            if kind == "company_check":
+                from app.collection.inventory import begin_run
+                from app.collection.models import Company, Source
+
+                company = db.get(Company, UUID(parameters["company_id"]), with_for_update=True)
+                if company is None or company.paused:
+                    check_progress = "Company is paused or unavailable. No checks started."
+                else:
+                    sources = list(
+                        db.scalars(
+                            select(Source)
+                            .where(Source.company_id == company.id)
+                            .order_by(Source.id)
+                            .with_for_update()
+                        )
+                    )
+                    count = sum(begin_run(db, source) is not None for source in sources)
+                    check_progress = f"{count} source checks queued or already pending."
+                    if not sources:
+                        check_progress = "No source is configured. Discover or add a job source."
             if kind == "source_collect":
                 from app.collection.inventory import apply_page
 
@@ -125,7 +148,9 @@ def process_operation(operation_id: UUID) -> None:
                     db, UUID(parameters["run_id"]), parameters["offset"], page_result, operation_id
                 )
             operation.state = "succeeded"
-            operation.progress = "Ready for review" if kind == "profile_ingest" else "Completed"
+            operation.progress = check_progress or (
+                "Ready for review" if kind == "profile_ingest" else "Completed"
+            )
             operation.finished_at = now()
             operation.lease_until = None
             operation.error_code = operation.error_message = None

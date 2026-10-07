@@ -52,3 +52,9 @@ Long-running actions return 202 with `{operation_id, resource_id, status_url}`. 
 Errors use `{code, message, field_errors, request_id}`. Use 409 for revision conflicts, 413 for upload limits, 422 for invalid user input, 429 for rate limits, and 503 for unavailable required infrastructure. AI outages are operational states, not misleading empty job responses.
 
 API handlers do authentication/validation, invoke service use cases, and return contracts. They must not contain browser automation or long AI calls. Generated clients and backward-compatible contract checks prevent frontend/backend drift.
+
+## Implemented inventory API checkpoint
+
+Company watches accept a label, optional public website and a 1–720 hour interval (24 by default). Creation returns a durable discovery intent while retaining unresolved watches. Company/source edits require quoted If-Match revisions. Source creation currently accepts an explicit Greenhouse/Lever/Ashby board identifier, optional Lever EU region and confirmed_company=true; arbitrary URL discovery and generic sources are later work. Adding a source records owner confirmation, not verified network access. Company check actions return a control operation that queues or joins eligible source checks; source cooldowns and pauses remain effective.
+
+`GET /jobs?view=all` serves unassessed inventory independently of candidate profile, with company, availability, plain-text query and stable cursor filters. Cursors are bound to their filters. Job detail includes source history links and current revision provenance. Until matching is implemented, the default recommended view returns a visible matching_unavailable error rather than a misleading empty shortlist. Company/Jobs portal integration and live collection remain unfinished.
