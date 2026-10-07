@@ -97,6 +97,10 @@ def process_operation(operation_id: UUID) -> None:
             result = analyze_document(UUID(parameters["document_id"]), operation_id, parameters)
         elif kind in {"company_check", "company_discover", "profile_reassess"}:
             pass  # Fan-out is committed with completion after the lease is checked.
+        elif kind == "digest_deliver":
+            from app.notifications.delivery import deliver
+
+            deliver(operation_id, token, UUID(parameters["digest_id"]))
         elif kind == "job_assess":
             from app.services.matching import prepare as prepare_assessment
 

@@ -39,6 +39,7 @@ def clean_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "document_dir", tmp_path / "documents")
     monkeypatch.setattr(get_settings(), "integration_mode", "mock")
     monkeypatch.setattr(get_settings(), "search_mode", "mock")
+    monkeypatch.setattr(get_settings(), "notification_mode", "mock")
     with get_engine().begin() as connection:
         connection.execute(
             text(

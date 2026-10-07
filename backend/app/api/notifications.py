@@ -7,6 +7,7 @@ from app.api.ai import check_revision
 from app.api.profiles import Expected
 from app.auth import DB, Auth
 from app.notifications.contracts import (
+    DeliveryView,
     DigestHistory,
     DigestSnapshot,
     DigestView,
@@ -14,10 +15,11 @@ from app.notifications.contracts import (
     NotificationSettingsView,
 )
 from app.notifications.ledger import advance
-from app.notifications.models import Digest, NotificationSettings
+from app.notifications.models import Delivery, Digest, NotificationSettings
 from app.profile_models import now
 from fastapi import APIRouter, Query, Response
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import aliased
 
 router = APIRouter(tags=["notifications"])
 
@@ -85,6 +87,20 @@ def history(
     if before is not None:
         query = query.where(Digest.local_date < before)
     rows = list(db.scalars(query.order_by(Digest.local_date.desc()).limit(limit + 1)))
+    prior = aliased(Delivery)
+    latest_attempt = (
+        select(func.max(prior.attempt))
+        .where(prior.digest_id == Delivery.digest_id)
+        .scalar_subquery()
+    )
+    deliveries = {
+        item.digest_id: item
+        for item in db.scalars(
+            select(Delivery)
+            .where(Delivery.digest_id.in_([row.id for row in rows[:limit]]))
+            .where(Delivery.attempt == latest_attempt)
+        )
+    }
     return DigestHistory(
         items=[
             DigestView(
@@ -97,6 +113,9 @@ def history(
                 state=row.state,
                 snapshot=DigestSnapshot.model_validate(row.snapshot),
                 created_at=row.created_at,
+                delivery=DeliveryView.model_validate(deliveries[row.id], from_attributes=True)
+                if row.id in deliveries
+                else None,
             )
             for row in rows[:limit]
         ],

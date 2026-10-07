@@ -172,3 +172,10 @@ Full backend suite passed 210 tests (87.91s). Final policy review then added sup
 Ruff lint/format and strict mypy pass (57 source files). Alembic consistency reports no new upgrade operations against migration 0013. OpenAPI types were regenerated and the final frontend TypeScript/Vite build passed (158.41 KB gzipped JavaScript). Existing Starlette/httpx deprecation and frontend chunk-size warnings remain. No dependency fetch, trust workaround, live AI request or ntfy publish occurred.
 
 Next implement delivery attempts, bounded retry, ambiguous-send recovery and definitely-unsent membership release, followed by portal configuration/history and transport validation. Digests currently persist as pending/skipped; notification transport is not yet functional. The original PLAN.md goal remains active, and the Python browser dependency certificate blocker is unchanged.
+
+
+### Notification delivery locally validated
+
+Full backend suite passed 235 tests (88.62s). After final recovery/cooldown refinements, 44 delivery/transport/ledger tests passed (22.77s), followed by 22 focused delivery/transport tests after large/padded Retry-After handling (8.97s). Ruff lint/format and strict mypy pass (59 files). Migration 0014 matches ORM metadata: Alembic check reports no new upgrade operations. Generated OpenAPI types and frontend TypeScript/Vite build pass (158.41 KB gzipped JavaScript). The SQLAlchemy DISTINCT ON warning was removed; the existing Starlette/httpx and frontend chunk-size warnings remain.
+
+Validated persisted pre-send state, acceptance receipts, replay safety, bounded definite-failure retry, unknown-outcome reservation, crash recovery, in-flight purge, destination changes and cooldown carry-over without real publishing. AGENTS.md now explicitly requires regular written progress checkpoints, including during long phases, and the top-level progress summary is refreshed. Saving this phase locally. Manual resend/test-message actions, notification portal UX and actual local ntfy/deployment acceptance remain next; no release completion is claimed. The existing browser dependency certificate blocker remains unchanged and was not retried.

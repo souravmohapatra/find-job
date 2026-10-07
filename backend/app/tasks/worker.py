@@ -63,6 +63,8 @@ def dispatch() -> int:
                 in {"profile_ingest", "ai_validate", "ai_reconcile", "job_assess", "job_extract"}
                 else "fetch"
                 if operation.kind in {"source_collect", "discovery_step"}
+                else "notify"
+                if operation.kind == "digest_deliver"
                 else "control"
             )
             # Execution locks + the business lease make duplicate dispatch harmless.
@@ -81,6 +83,7 @@ def dispatch() -> int:
 def tick(timestamp: int) -> None:
     from app.collection.discovery import schedule
     from app.collection.inventory import schedule_due
+    from app.notifications.delivery import reconcile as reconcile_deliveries
     from app.notifications.ledger import schedule as schedule_digest
     from app.services.matching import reconcile
 
@@ -94,6 +97,7 @@ def tick(timestamp: int) -> None:
         reconcile(db)
     with Session(get_engine()) as db, db.begin():
         schedule_digest(db)
+        reconcile_deliveries(db)
     dispatch()
 
 

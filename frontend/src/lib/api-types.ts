@@ -992,6 +992,36 @@ export interface components {
        */
       comparable: boolean;
     };
+    /** DeliveryView */
+    DeliveryView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Attempt */
+      attempt: number;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown';
+      /** Retryable */
+      retryable: boolean;
+      /** Error Code */
+      error_code: string | null;
+      /** Remote Id */
+      remote_id: string | null;
+      /**
+       * Available At
+       * Format: date-time
+       */
+      available_at: string;
+      /** Started At */
+      started_at: string | null;
+      /** Finished At */
+      finished_at: string | null;
+    };
     /** DigestHistory */
     DigestHistory: {
       /** Items */
@@ -1068,6 +1098,7 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      delivery?: components['schemas']['DeliveryView'] | null;
     };
     /** DiscoveryCandidate */
     DiscoveryCandidate: {

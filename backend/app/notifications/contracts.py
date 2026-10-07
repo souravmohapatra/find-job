@@ -59,6 +59,18 @@ class DigestSnapshot(Contract):
     matching_available: bool = False
 
 
+class DeliveryView(Contract):
+    id: UUID
+    attempt: int
+    state: Literal["pending", "sending", "sent", "failed", "unknown"]
+    retryable: bool
+    error_code: str | None
+    remote_id: str | None
+    available_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
 class DigestView(Contract):
     id: UUID
     local_date: date
@@ -69,6 +81,7 @@ class DigestView(Contract):
     state: Literal["pending", "sending", "sent", "failed", "unknown", "skipped"]
     snapshot: DigestSnapshot
     created_at: datetime
+    delivery: DeliveryView | None = None
 
 
 class DigestHistory(Contract):

@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     fetcher_url: str | None = None
     fetcher_token_file: Path = Path("/run/secrets/fetcher_token")
     document_dir: Path = Path("/data/documents")
+    notification_mode: Literal["mock", "live"] = "mock"
+    ntfy_url: str | None = None
+    ntfy_topic: str = "jobfinder"
+    notification_app_url: str | None = None
+    ntfy_token_file: Path = Path("/run/secrets/ntfy_publisher_token")
 
     @model_validator(mode="after")
     def production_security(self) -> "Settings":

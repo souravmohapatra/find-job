@@ -75,3 +75,27 @@ class DigestItem(Base):
     event_id: Mapped[UUID] = mapped_column(
         ForeignKey("notification_events.id", ondelete="CASCADE"), primary_key=True
     )
+
+
+class Delivery(Base):
+    __tablename__ = "notification_deliveries"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('pending','sending','sent','failed','unknown')", name="delivery_state"
+        ),
+        Index("ix_delivery_due", "state", "available_at"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    digest_id: Mapped[UUID] = mapped_column(
+        ForeignKey("notification_digests.id", ondelete="CASCADE"), index=True
+    )
+    operation_id: Mapped[UUID] = mapped_column(ForeignKey("operation_intents.id"), unique=True)
+    attempt: Mapped[int]
+    state: Mapped[str] = mapped_column(String(20), default="pending")
+    target: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    retryable: Mapped[bool] = mapped_column(default=False)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    remote_id: Mapped[str | None] = mapped_column(String(100))
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

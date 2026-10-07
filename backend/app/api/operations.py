@@ -39,6 +39,12 @@ def retry_operation(operation_id: UUID, session: Auth, db: DB) -> dict[str, str]
         raise problem(
             409, "operation_not_retryable", "Only failed or blocked operations can be retried."
         )
+    if operation.kind == "digest_deliver":
+        raise problem(
+            409,
+            "notification_retry_required",
+            "Notification resend needs explicit confirmation. Ordinary retries are disabled.",
+        )
     if operation.kind == "profile_ingest":
         identifier = UUID(operation.parameters["document_id"])
         document = db.get(Document, identifier)
