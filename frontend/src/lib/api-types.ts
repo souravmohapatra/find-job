@@ -109,6 +109,40 @@ export interface paths {
     patch: operations['edit_source_api_v1_sources__identifier__patch'];
     trace?: never;
   };
+  '/api/v1/sources/{identifier}/rules': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update Rules */
+    put: operations['update_rules_api_v1_sources__identifier__rules_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/sources/{identifier}/rules/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview Rules */
+    post: operations['preview_rules_api_v1_sources__identifier__rules_preview_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/sources/{identifier}/runs': {
     parameters: {
       query?: never;
@@ -1844,6 +1878,22 @@ export interface components {
       /** Retain Original */
       retain_original: boolean;
     };
+    /** RulesPreview */
+    RulesPreview: {
+      /**
+       * Fetched At
+       * Format: date-time
+       */
+      fetched_at: string;
+      /** Accepted Jobs */
+      accepted_jobs: number;
+      /** Examples */
+      examples: string[];
+      /** Complete */
+      complete: boolean;
+      /** Issues */
+      issues: string[];
+    };
     /** RunView */
     RunView: {
       /**
@@ -1864,6 +1914,35 @@ export interface components {
       started_at: string;
       /** Finished At */
       finished_at: string | null;
+    };
+    /** SelectorRules */
+    SelectorRules: {
+      /** Cards */
+      cards: string;
+      /** Title */
+      title: string;
+      /** Link */
+      link: string;
+      /** Description */
+      description: string;
+      /** Employer */
+      employer: string;
+      /**
+       * Employer Scope
+       * @default card
+       * @enum {string}
+       */
+      employer_scope: 'card' | 'page';
+      /** Location */
+      location?: string | null;
+      /** Next Page */
+      next_page?: string | null;
+      /** Empty */
+      empty?: string | null;
+      /** Closed */
+      closed?: string | null;
+      /** Valid Through */
+      valid_through?: string | null;
     };
     /** SessionResponse */
     SessionResponse: {
@@ -1902,8 +1981,13 @@ export interface components {
       /** Interval Hours */
       interval_hours?: number | null;
     };
+    /** SourceRulesEdit */
+    SourceRulesEdit: {
+      rules: components['schemas']['SelectorRules'] | null;
+    };
     /** SourceView */
     SourceView: {
+      rules?: components['schemas']['SelectorRules'] | null;
       /**
        * Id
        * Format: uuid
@@ -2436,6 +2520,80 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['SourceView'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  update_rules_api_v1_sources__identifier__rules_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        'If-Match'?: string | null;
+      };
+      path: {
+        identifier: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SourceRulesEdit'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SourceView'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  preview_rules_api_v1_sources__identifier__rules_preview_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'If-Match'?: string | null;
+      };
+      path: {
+        identifier: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SourceRulesEdit'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RulesPreview'];
         };
       };
       /** @description Validation Error */

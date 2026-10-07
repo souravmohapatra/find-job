@@ -486,6 +486,140 @@
         }
       }
     },
+    "/api/v1/sources/{identifier}/rules": {
+      "put": {
+        "tags": ["companies"],
+        "summary": "Update Rules",
+        "operationId": "update_rules_api_v1_sources__identifier__rules_put",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identifier"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRulesEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{identifier}/rules/preview": {
+      "post": {
+        "tags": ["companies"],
+        "summary": "Preview Rules",
+        "operationId": "preview_rules_api_v1_sources__identifier__rules_preview_post",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identifier"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRulesEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources/{identifier}/runs": {
       "get": {
         "tags": ["companies"],
@@ -4834,6 +4968,40 @@
         "required": ["retain_original"],
         "title": "RetentionChange"
       },
+      "RulesPreview": {
+        "properties": {
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          },
+          "accepted_jobs": {
+            "type": "integer",
+            "title": "Accepted Jobs"
+          },
+          "examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Examples"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": ["fetched_at", "accepted_jobs", "examples", "complete", "issues"],
+        "title": "RulesPreview"
+      },
       "RunView": {
         "properties": {
           "id": {
@@ -4877,6 +5045,115 @@
         "type": "object",
         "required": ["id", "state", "pages", "issues", "started_at", "finished_at"],
         "title": "RunView"
+      },
+      "SelectorRules": {
+        "properties": {
+          "cards": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Cards"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "link": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Link"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "employer": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Employer"
+          },
+          "employer_scope": {
+            "type": "string",
+            "enum": ["card", "page"],
+            "title": "Employer Scope",
+            "default": "card"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "next_page": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Page"
+          },
+          "empty": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty"
+          },
+          "closed": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed"
+          },
+          "valid_through": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Through"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["cards", "title", "link", "description", "employer"],
+        "title": "SelectorRules"
       },
       "SessionResponse": {
         "properties": {
@@ -4953,8 +5230,36 @@
         "required": ["adapter", "board", "confirmed_company"],
         "title": "SourceInput"
       },
+      "SourceRulesEdit": {
+        "properties": {
+          "rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectorRules"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["rules"],
+        "title": "SourceRulesEdit"
+      },
       "SourceView": {
         "properties": {
+          "rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectorRules"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "format": "uuid",

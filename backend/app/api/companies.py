@@ -9,21 +9,24 @@ from app.api.inventory_contracts import (
     CompanyView,
     DiscoveryChoice,
     DiscoveryView,
+    RulesPreview,
     RunView,
     SourceEdit,
     SourceInput,
+    SourceRulesEdit,
     SourceView,
 )
 from app.auth import DB, Auth
 from app.collection.ats import request_url
 from app.collection.contracts import public_link
 from app.collection.inventory import key
-from app.collection.models import CollectionRun, Company, DiscoveryRun, Source
+from app.collection.models import CollectionRun, Company, DiscoveryRun, Source, SourceSnapshot
 from app.collection.overview import company_views
 from app.errors import problem
 from app.profile_models import Operation, now
 from app.services.operations import create_operation, operation_response, request_hash
 from fastapi import APIRouter, Header, Query
+from pydantic import ValidationError
 from sqlalchemy import select
 
 router = APIRouter(tags=["companies"])
@@ -196,6 +199,87 @@ def edit_source(
         row.next_due_at = now()
     db.commit()
     return row
+
+
+def rules_source(db: DB, identifier: UUID, expected: str | None) -> Source:
+    row = db.get(Source, identifier, with_for_update=True)
+    if row is None:
+        raise problem(404, "source_not_found", "This source could not be found.")
+    revision_check(expected, row.revision)
+    if row.adapter != "generic_http" or row.authoritative:
+        raise problem(
+            422, "source_rules_unsupported", "Extraction rules apply to website sources only."
+        )
+    return row
+
+
+@router.put("/sources/{identifier}/rules", response_model=SourceView)
+def update_rules(
+    identifier: UUID, body: SourceRulesEdit, session: Auth, db: DB, expected: Expected = None
+) -> Source:
+    row = rules_source(db, identifier, expected)
+    config = dict(row.config)
+    if body.rules is None:
+        config.pop("rules", None)
+    else:
+        config["rules"] = body.rules.model_dump(mode="json")
+    row.config = config
+    row.revision += 1
+    if row.enabled:
+        row.next_due_at = now()
+    db.commit()
+    return row
+
+
+@router.post("/sources/{identifier}/rules/preview", response_model=RulesPreview)
+def preview_rules(
+    identifier: UUID, body: SourceRulesEdit, session: Auth, db: DB, expected: Expected = None
+) -> RulesPreview:
+    from datetime import timedelta
+
+    from app.collection.generic_inventory import collect
+    from app.fetcher.contracts import FetchResult
+
+    row = rules_source(db, identifier, expected)
+    snapshot = db.get(SourceSnapshot, (row.id, key(row.url)))
+    if snapshot is None or snapshot.fetched_at < now() - timedelta(days=7):
+        raise problem(
+            409,
+            "source_preview_unavailable",
+            "No recent saved source page is available. Run a company check first.",
+        )
+    try:
+        document = FetchResult.model_validate(snapshot.document)
+    except ValidationError:
+        raise problem(
+            409, "source_preview_unavailable", "The saved source page is invalid. Run a new check."
+        ) from None
+    if (
+        document.url != row.url
+        or document.status != 200
+        or document.content_type.split(";", 1)[0].lower().strip()
+        not in {"text/html", "application/xhtml+xml"}
+        or snapshot.body_hash != key(document.body)
+    ):
+        raise problem(
+            409,
+            "source_preview_unavailable",
+            "The saved source page is unavailable. Run a new check.",
+        )
+    page = collect(
+        row.url,
+        row.config["company_name"],
+        row.config["website"],
+        document=document,
+        rules=body.rules,
+    )
+    return RulesPreview(
+        fetched_at=snapshot.fetched_at,
+        accepted_jobs=len(page.postings),
+        examples=[job.title for job in page.postings[:10]],
+        complete=page.complete,
+        issues=page.issues,
+    )
 
 
 @router.get("/sources/{identifier}/runs", response_model=list[RunView])

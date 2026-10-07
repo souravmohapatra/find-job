@@ -22,7 +22,9 @@ REST JSON under `/api/v1`, served from the same origin as the web client. FastAP
 | GET /companies/{id}; PATCH /companies/{id} | Company state, interval, pause/resume, and identity correction. |
 | POST /companies/{id}/discover; POST /companies/{id}/check | Durable on-demand operation, joining pending work when present. |
 | GET /companies/{id}/sources; POST /companies/{id}/sources | Inspect discovery results and add/confirm source URLs. |
-| PATCH /sources/{id} | Confirm/disable source, edit interval and supported declarative options. |
+| PATCH /sources/{id} | Enable/disable source and edit collection interval. |
+| PUT /sources/{id}/rules | Revision-checked website extraction rules; null restores automatic extraction. |
+| POST /sources/{id}/rules/preview | Revision-checked preview against a recent saved public page; no fetch, AI call or inventory write. |
 | GET /sources/{id}/runs | Bounded collection history and coverage/errors. |
 | GET /jobs | Cursor-paginated inventory with view/company/availability/text filters. |
 | GET /jobs/{id} | Job detail, provenance, current assessment and version history summary. |

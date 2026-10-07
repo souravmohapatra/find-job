@@ -7,9 +7,11 @@ from uuid import UUID
 from app.collection.ats import decode_page, request_url
 from app.collection.contracts import Adapter, InventoryPage
 from app.collection.models import CollectionRun, Company, Observation, Source
+from app.collection.selectors import SelectorRules
 from app.db import get_engine
 from app.profile_models import now
 from app.services.operations import OperationError
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -53,6 +55,16 @@ def prepare_page(run_id: UUID, offset: int) -> InventoryPage:
             raise OperationError(
                 "adapter_unavailable", "This source adapter is not configured.", blocked=True
             )
+        try:
+            rules = (
+                SelectorRules.model_validate(source.config["rules"])
+                if source.config.get("rules") is not None
+                else None
+            )
+        except ValidationError:
+            raise OperationError(
+                "source_rules_invalid", "Review the source extraction rules.", blocked=True
+            ) from None
         source_id, source_revision = source.id, source.revision
         adapter = cast(Adapter, source.adapter)
         url = (
@@ -71,7 +83,7 @@ def prepare_page(run_id: UUID, offset: int) -> InventoryPage:
     remote = generic_inventory.fetch_document if generic_config else transport.fetch_document
     document, snapshot = cache.fetch(source_id, source_revision, url, remote)
     page = (
-        generic_inventory.collect(*generic_config, document=document)
+        generic_inventory.collect(*generic_config, document=document, rules=rules)
         if generic_config
         else decode_page(adapter, transport.parse_json(document), offset=offset)
     )

@@ -41,6 +41,7 @@ class PageLink(BaseModel):
 
 
 class GenericPage(BaseModel):
+    empty_confirmed: bool = False
     candidates: list[JobCandidate] = Field(default_factory=list)
     links: list[PageLink] = Field(default_factory=list)
     visible_text: str = ""

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.api.contracts import OperationView
 from app.collection.contracts import Adapter, Posting, public_link
+from app.collection.selectors import SelectorRules
 from app.domain.matching import Assessment, Category
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -71,6 +72,7 @@ class SourceEdit(Input):
 
 
 class SourceView(BaseModel):
+    rules: SelectorRules | None = None
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     company_id: UUID
@@ -85,6 +87,18 @@ class SourceView(BaseModel):
     baseline_at: datetime | None
     last_success_at: datetime | None
     last_error: str | None
+
+
+class SourceRulesEdit(Input):
+    rules: SelectorRules | None
+
+
+class RulesPreview(BaseModel):
+    fetched_at: datetime
+    accepted_jobs: int
+    examples: list[str]
+    complete: bool
+    issues: list[str]
 
 
 class RunView(BaseModel):

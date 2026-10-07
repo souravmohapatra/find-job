@@ -50,6 +50,11 @@ class Source(Base):
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(String(100))
 
+    @property
+    def rules(self) -> dict[str, Any] | None:
+        value = self.config.get("rules")
+        return value if isinstance(value, dict) else None
+
 
 class CollectionRun(Base):
     __tablename__ = "collection_runs"

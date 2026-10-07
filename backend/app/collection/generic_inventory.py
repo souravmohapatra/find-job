@@ -6,6 +6,7 @@ import unicodedata
 from app.collection.contracts import InventoryPage
 from app.collection.extraction_input import PreparedPage, PublicPage
 from app.collection.generic import GenericPage, JobCandidate, parse_page
+from app.collection.selectors import SelectorRules
 from app.collection.transport import fetch_document as fetch_document
 from app.fetcher.contracts import FetchRequest, FetchResult
 from app.services.operations import OperationError
@@ -42,17 +43,24 @@ def inventory(page: GenericPage, company_name: str, website: str) -> InventoryPa
             issues.add("expired_job_evidence")
             continue
         postings.append(candidate.posting)
-    if not postings:
+    if not postings and not page.empty_confirmed:
         issues.add("no_verified_generic_jobs")
     # Complete here means this page was parsed, never exhaustive company coverage.
     # The Source must be non-authoritative; no omissions may close jobs.
     return InventoryPage(
-        postings=postings, complete=bool(postings) and not issues, issues=sorted(issues)
+        postings=postings,
+        complete=(bool(postings) or page.empty_confirmed) and not issues,
+        issues=sorted(issues),
     )
 
 
 def collect(
-    url: str, company_name: str, website: str, *, document: FetchResult | None = None
+    url: str,
+    company_name: str,
+    website: str,
+    *,
+    document: FetchResult | None = None,
+    rules: SelectorRules | None = None,
 ) -> InventoryPage:
     document = document or fetch_document(FetchRequest(url=url))
     if document.status != 200:
@@ -71,7 +79,14 @@ def collect(
         "application/xhtml+xml",
     }:
         raise OperationError("generic_content_type", "The job page did not return HTML.")
-    page = parse_page(document.body, document.url)
+    if rules is not None:
+        from app.collection.selectors import parse
+
+        page = parse(document.body, document.url, rules)
+        if any(not same_site(entry.url, website) for entry in page.links):
+            page.issues.append("selector_external_pagination")
+    else:
+        page = parse_page(document.body, document.url)
     result = inventory(page, company_name, website)
     collected_urls = {posting.url for posting in result.postings}
     links = [
@@ -87,7 +102,7 @@ def collect(
     if len(set(links)) > 200:
         result.issues.append("generic_link_limit")
         result.complete = False
-    if not page.candidates and page.visible_text.strip():
+    if rules is None and not page.candidates and page.visible_text.strip():
         if len(page.visible_text) > 40_000:
             result.issues.append("extraction_input_limit")
         else:
