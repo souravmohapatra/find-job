@@ -19,6 +19,7 @@ from app.collection.ats import request_url
 from app.collection.contracts import public_link
 from app.collection.inventory import key
 from app.collection.models import CollectionRun, Company, DiscoveryRun, Source
+from app.collection.overview import company_views
 from app.errors import problem
 from app.profile_models import Operation, now
 from app.services.operations import create_operation, operation_response, request_hash
@@ -53,7 +54,10 @@ def companies(session: Auth, db: DB, offset: int = Query(0, ge=0)) -> dict[str, 
             select(Company).order_by(Company.created_at, Company.id).offset(offset).limit(21)
         )
     )
-    return {"items": rows[:20], "next_offset": offset + 20 if len(rows) > 20 else None}
+    return {
+        "items": company_views(db, rows[:20]),
+        "next_offset": offset + 20 if len(rows) > 20 else None,
+    }
 
 
 @router.post("/companies", response_model=OperationAccepted, status_code=202)
@@ -76,14 +80,14 @@ def add_company(
 
 
 @router.get("/companies/{identifier}", response_model=CompanyView)
-def company(identifier: UUID, session: Auth, db: DB) -> Company:
-    return company_row(db, identifier)
+def company(identifier: UUID, session: Auth, db: DB) -> CompanyView:
+    return company_views(db, [company_row(db, identifier)])[0]
 
 
 @router.patch("/companies/{identifier}", response_model=CompanyView)
 def edit_company(
     identifier: UUID, body: CompanyEdit, session: Auth, db: DB, expected: Expected = None
-) -> Company:
+) -> CompanyView:
     row = company_row(db, identifier, lock=True)
     revision_check(expected, row.revision)
     pause_changed = row.paused != body.paused
@@ -102,7 +106,7 @@ def edit_company(
             if not row.paused:
                 source.next_due_at = now()
     db.commit()
-    return row
+    return company_views(db, [row])[0]
 
 
 def queue_company(

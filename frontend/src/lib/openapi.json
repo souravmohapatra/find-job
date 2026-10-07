@@ -2803,6 +2803,105 @@
         "required": ["label", "count"],
         "title": "CompanyCount"
       },
+      "CompanyCoverage": {
+        "properties": {
+          "collected_jobs": {
+            "type": "integer",
+            "title": "Collected Jobs",
+            "default": 0
+          },
+          "active_jobs": {
+            "type": "integer",
+            "title": "Active Jobs",
+            "default": 0
+          },
+          "unknown_jobs": {
+            "type": "integer",
+            "title": "Unknown Jobs",
+            "default": 0
+          },
+          "closed_jobs": {
+            "type": "integer",
+            "title": "Closed Jobs",
+            "default": 0
+          },
+          "sources": {
+            "type": "integer",
+            "title": "Sources",
+            "default": 0
+          },
+          "enabled_sources": {
+            "type": "integer",
+            "title": "Enabled Sources",
+            "default": 0
+          },
+          "partial_sources": {
+            "type": "integer",
+            "title": "Partial Sources",
+            "default": 0
+          },
+          "sources_needing_attention": {
+            "type": "integer",
+            "title": "Sources Needing Attention",
+            "default": 0
+          },
+          "sources_without_success": {
+            "type": "integer",
+            "title": "Sources Without Success",
+            "default": 0
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "next_check_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Check At"
+          },
+          "next_discovery_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Discovery At"
+          }
+        },
+        "type": "object",
+        "title": "CompanyCoverage"
+      },
       "CompanyEdit": {
         "properties": {
           "label": {
@@ -2941,6 +3040,9 @@
             "type": "string",
             "title": "Resolution"
           },
+          "coverage": {
+            "$ref": "#/components/schemas/CompanyCoverage"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -2949,7 +3051,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": ["label", "id", "revision", "resolution", "created_at"],
+        "required": ["label", "id", "revision", "resolution", "coverage", "created_at"],
         "title": "CompanyView"
       },
       "Counts": {

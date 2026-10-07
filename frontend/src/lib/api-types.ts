@@ -925,6 +925,62 @@ export interface components {
       /** Count */
       count: number;
     };
+    /** CompanyCoverage */
+    CompanyCoverage: {
+      /**
+       * Collected Jobs
+       * @default 0
+       */
+      collected_jobs: number;
+      /**
+       * Active Jobs
+       * @default 0
+       */
+      active_jobs: number;
+      /**
+       * Unknown Jobs
+       * @default 0
+       */
+      unknown_jobs: number;
+      /**
+       * Closed Jobs
+       * @default 0
+       */
+      closed_jobs: number;
+      /**
+       * Sources
+       * @default 0
+       */
+      sources: number;
+      /**
+       * Enabled Sources
+       * @default 0
+       */
+      enabled_sources: number;
+      /**
+       * Partial Sources
+       * @default 0
+       */
+      partial_sources: number;
+      /**
+       * Sources Needing Attention
+       * @default 0
+       */
+      sources_needing_attention: number;
+      /**
+       * Sources Without Success
+       * @default 0
+       */
+      sources_without_success: number;
+      /** Last Success At */
+      last_success_at?: string | null;
+      /** Last Attempt At */
+      last_attempt_at?: string | null;
+      /** Next Check At */
+      next_check_at?: string | null;
+      /** Next Discovery At */
+      next_discovery_at?: string | null;
+    };
     /** CompanyEdit */
     CompanyEdit: {
       /** Label */
@@ -986,6 +1042,7 @@ export interface components {
       revision: number;
       /** Resolution */
       resolution: string;
+      coverage: components['schemas']['CompanyCoverage'];
       /**
        * Created At
        * Format: date-time

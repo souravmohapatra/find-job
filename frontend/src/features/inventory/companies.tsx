@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/button';
 import { request } from '../../lib/api';
 import { Failure, OperationStatus } from './shared';
 import { DiscoveryHistory } from './discovery';
+import { CompanyCoverage } from './coverage';
 import { date, read, useCsrf, type Schemas } from './data';
 
 export function CompaniesPage() {
@@ -99,8 +100,11 @@ export function CompaniesPage() {
                       ? 'Company identity needs review'
                       : company.resolution.replaceAll('_', ' ')}
                 </p>
+                <CompanyCoverage company={company} />
               </div>
-              <Link to={`/jobs?view=all&company_id=${company.id}`}>All collected jobs</Link>
+              <Link to={`/jobs?view=all&availability=all&company_id=${company.id}`}>
+                All collected jobs
+              </Link>
             </article>
           ))}
         {companies.data?.pages[0].items.length === 0 && (
@@ -233,7 +237,7 @@ function CompanyEditor({ company }: { company: Schemas['CompanyView'] }) {
     </details>
   );
 }
-function SourceCard({ source }: { source: Schemas['SourceView'] }) {
+function SourceCard({ source, paused }: { source: Schemas['SourceView']; paused: boolean }) {
   const csrf = useCsrf();
   const client = useQueryClient();
   const [draft, setDraft] = useState<{ interval: number; enabled: boolean; base: number } | null>(
@@ -283,7 +287,18 @@ function SourceCard({ source }: { source: Schemas['SourceView'] }) {
       </a>
       <p>{source.enabled ? 'Monitoring enabled' : 'Monitoring disabled'}</p>
       <p>Last successful check: {date(source.last_success_at)}</p>
-      <p>Next scheduled check: {date(source.next_due_at)}</p>
+      <p>
+        {paused
+          ? 'Source checks paused with this company.'
+          : !source.enabled
+            ? 'No scheduled check while this source is disabled.'
+            : `Next scheduled check: ${date(
+                source.cooldown_until &&
+                  new Date(source.cooldown_until) > new Date(source.next_due_at)
+                  ? source.cooldown_until
+                  : source.next_due_at,
+              )}`}
+      </p>
       {source.last_error && (
         <p role="status">
           Check needs attention: {source.last_error.replaceAll('_', ' ')}. Existing listings are
@@ -368,6 +383,8 @@ export function CompanyPage() {
       ),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ['sources', id] });
+      await client.invalidateQueries({ queryKey: ['company', id] });
+      await client.invalidateQueries({ queryKey: ['companies'] });
       setBoard('');
       setConfirmed(false);
     },
@@ -405,8 +422,12 @@ export function CompanyPage() {
         >
           Find job sources
         </Button>
-        <Link to={`/jobs?view=all&company_id=${id}`}>All collected jobs</Link>
+        <Link to={`/jobs?view=all&availability=all&company_id=${id}`}>All collected jobs</Link>
       </div>
+      <section className="panel" aria-labelledby="coverage-title">
+        <h2 id="coverage-title">Collected jobs and coverage</h2>
+        <CompanyCoverage company={company.data} />
+      </section>
       {action.isError && <Failure focus error={action.error} />}
       <OperationStatus id={operation} />
       <section className="panel">
@@ -424,7 +445,7 @@ export function CompanyPage() {
           <p>No source configured yet. Your company watch is retained.</p>
         )}
         {sources.data?.map((source) => (
-          <SourceCard key={source.id} source={source} />
+          <SourceCard key={source.id} source={source} paused={company.data.paused ?? false} />
         ))}
       </section>
       <DiscoveryHistory company={company.data} onOperation={setOperation} />

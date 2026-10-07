@@ -27,11 +27,28 @@ class CompanyEdit(CompanyInput):
     paused: bool = False
 
 
+class CompanyCoverage(BaseModel):
+    collected_jobs: int = 0
+    active_jobs: int = 0
+    unknown_jobs: int = 0
+    closed_jobs: int = 0
+    sources: int = 0
+    enabled_sources: int = 0
+    partial_sources: int = 0
+    sources_needing_attention: int = 0
+    sources_without_success: int = 0
+    last_success_at: datetime | None = None
+    last_attempt_at: datetime | None = None
+    next_check_at: datetime | None = None
+    next_discovery_at: datetime | None = None
+
+
 class CompanyView(CompanyEdit):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     revision: int
     resolution: str
+    coverage: CompanyCoverage
     created_at: datetime
 
 

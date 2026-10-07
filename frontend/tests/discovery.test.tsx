@@ -12,6 +12,17 @@ const company = {
   paused: false,
   revision: 1,
   resolution: 'needs_review',
+  coverage: {
+    collected_jobs: 0,
+    active_jobs: 0,
+    unknown_jobs: 0,
+    closed_jobs: 0,
+    sources: 0,
+    enabled_sources: 0,
+    partial_sources: 0,
+    sources_needing_attention: 0,
+    sources_without_success: 0,
+  },
   created_at: '2026-10-07T12:00:00Z',
 };
 const history = [

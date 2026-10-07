@@ -290,6 +290,9 @@ test('company watch → source controls → all jobs → detail and retained fil
   await expect(
     page.getByText('No source configured yet. Your company watch is retained.'),
   ).toBeVisible();
+  await expect(
+    page.getByText('No job source yet. Zero collected roles does not mean there are no vacancies.'),
+  ).toBeVisible();
   await page.getByLabel('Job board provider').selectOption('lever');
   await page.getByLabel('Board identifier').fill('synthetic');
   await page.getByLabel('I checked that this board belongs to this company').check();
@@ -299,6 +302,8 @@ test('company watch → source controls → all jobs → detail and retained fil
   await page.getByLabel('Pause monitoring').check();
   await page.getByRole('button', { name: 'Save company', exact: true }).click();
   await expect(page.getByText('Monitoring paused', { exact: true })).toBeVisible();
+  await expect(page.getByText('Checks are paused.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Source checks paused with this company.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check now' })).toBeDisabled();
   await page.getByLabel('Pause monitoring').uncheck();
   await page.getByRole('button', { name: 'Save company', exact: true }).click();
@@ -319,6 +324,21 @@ test('company watch → source controls → all jobs → detail and retained fil
   await sourceCard.getByRole('button', { name: 'Save source', exact: true }).click();
   await expect(sourceCard.getByText('Source settings saved.')).toBeVisible();
   execFileSync('../backend/.venv/bin/python', ['../scripts/seed-browser-jobs.py', companyId]);
+  await expect(page.getByText('2 collected roles', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to companies', exact: true }).click();
+  const companyCard = page
+    .locator('article')
+    .filter({ has: page.getByRole('link', { name: 'Synthetic Entertainment', exact: true }) });
+  await expect(companyCard.getByText('2 collected roles', { exact: true })).toBeVisible();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await companyCard.screenshot({ path: `test-results/company-overview-${width}.png` });
+  }
+  await companyCard.getByRole('link', { name: 'Synthetic Entertainment', exact: true }).click();
   await page.getByRole('link', { name: 'All collected jobs', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Legal adviser', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Strategy manager', exact: true })).toBeVisible();
