@@ -1,6 +1,8 @@
 import uuid
+from pathlib import Path
 from typing import Any
 
+from alembic.script import ScriptDirectory
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -8,9 +10,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.api.operations import router as operations_router
+from app.api.profiles import router as profile_router
 from app.auth import DB, Auth, authenticated
 from app.auth import router as auth_router
 from app.config import get_settings
+from app.profile_models import Profile
 
 
 def create_app() -> FastAPI:
@@ -71,6 +76,8 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(profile_router, prefix="/api/v1")
+    app.include_router(operations_router, prefix="/api/v1")
 
     @app.get("/api/v1/health/live")
     def live() -> dict[str, str]:
@@ -79,20 +86,27 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/health/ready", dependencies=[Depends(authenticated)])
     def ready(db: DB) -> dict[str, str]:
         version = db.scalar(text("SELECT version_num FROM alembic_version"))
-        if version != "0001_foundation":
+        if (
+            version
+            != ScriptDirectory(
+                str(Path(__file__).resolve().parents[1] / "migrations")
+            ).get_current_head()
+        ):
             raise HTTPException(
                 503, detail={"code": "migration_required", "message": "Run migrations."}
             )
         return {"status": "ready", "schema": version}
 
     @app.get("/api/v1/status")
-    def status(session: Auth) -> dict[str, Any]:
+    def status(session: Auth, db: DB) -> dict[str, Any]:
         settings = get_settings()
         return {
             "environment": settings.environment,
             "integration_mode": settings.integration_mode,
-            "profile_configured": False,
-            "phase": "foundation",
+            "profile_configured": bool(
+                (profile := db.get(Profile, 1)) and profile.current_revision
+            ),
+            "phase": "profile_review",
         }
 
     @app.get("/api/v1/openapi.json", dependencies=[Depends(authenticated)], include_in_schema=False)

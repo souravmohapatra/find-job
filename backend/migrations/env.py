@@ -1,9 +1,8 @@
 from alembic import context
-from sqlalchemy import create_engine, pool
-
-from app import models  # noqa: F401
+from app import models, profile_models  # noqa: F401
 from app.config import get_settings
 from app.db import Base
+from sqlalchemy import create_engine, pool
 
 if context.is_offline_mode():
     context.configure(

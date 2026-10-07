@@ -12,6 +12,7 @@ import {
 import { api, ApiError, errorMessage, type Session } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Login } from '../features/auth/login';
+import { ProfilePage } from '../features/profile/page';
 const nav = [
   { to: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { to: '/companies', label: 'Companies', icon: Building2 },
@@ -136,8 +137,7 @@ function FoundationPage({ page }: { page: keyof typeof pages }) {
           </Button>
         )}
         <p className="preview-note">
-          This preview validates navigation and sign-in. Job collection and profile setup are not
-          available yet.
+          Company monitoring and job matching are still being built. Profile setup is available.
         </p>
       </section>
     </>
@@ -218,7 +218,7 @@ export function App() {
         <Route path="/login" element={<Navigate to="/jobs" replace />} />
         <Route path="/jobs" element={<FoundationPage page="jobs" />} />
         <Route path="/companies" element={<FoundationPage page="companies" />} />
-        <Route path="/profile" element={<FoundationPage page="profile" />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<Settings />} />
         <Route
           path="*"

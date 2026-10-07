@@ -2,6 +2,10 @@
 
 ## Current evidence
 
+Authentication and profile ingestion/review now have real PostgreSQL/worker/browser validation under the approved host-network development setup. The current backend suite has 17 passing tests; seven frontend component tests pass. OpenRouter integration/model quality, collection, matching, notification and release gates below remain pending. See the dated evidence entries and PROGRESS.md for scope and commands.
+
+## Historical documentation baseline
+
 2026-10-07: documentation-only baseline. Workspace inspection found an empty repository working tree before this task. No application, containers, AI integration, collection engine, or notification flow exists. No product acceptance scenario below has been executed.
 
 The initial ten-document baseline passed local link/whitespace checks. The previous implementation-design revision passed checks for 16 files. The broad-shortlist/daily-digest refinement receives a fresh document check recorded in PROGRESS.md. Technical selections are design decisions, not executed evidence.
@@ -75,3 +79,13 @@ The thresholds are selected acceptance targets, not observed results. Exact task
 2026-10-07: merged compose.test.yaml + compose.test.host.yaml configuration checked for host networking, absent port mappings/networks, and PostgreSQL command binding only 127.0.0.1:55439. Cached-image startup succeeded; host ss confirmed only the loopback listener. An authenticated psycopg connection from the host confirmed the database, configured listener, port and server address. The first check's raw inet text included /32; normalized with PostgreSQL host() and passed. `python3 scripts/test-backend.py -q`: seven tests passed, exercising the real PostgreSQL migration/authentication foundation. This replaces the earlier host-to-bridge blocker for development tests only. Normal Compose networking, LAN/tailnet ingress, fetcher isolation and full product behavior remain release gates on the intended deployment host.
 
 Final backend recheck after migration timeout/configuration cleanup: Ruff lint/format, strict mypy, and seven PostgreSQL-backed tests passed (2.73s). One upstream httpx test-client deprecation warning remains. Digest-pinned merged Compose configuration passed inspection.
+
+## Implementation evidence: profile ingestion and review
+
+2026-10-07: 17 backend tests passed, covering the original authentication foundation plus profile review/immutable revisions, optimistic conflicts, duplicate upload/worker handling, real queue dispatch, expired operation leases and missing-worker queue recovery, TXT/DOCX tables/multi-page PDF parsing, unsupported/image-only/oversized input handling, evidence validation, deletion/purge, and retained/pending-document protection during 30-day retention. Ruff lint/format and strict mypy passed; readiness's dynamic Alembic-head check passed its targeted regression test. One upstream Starlette/httpx deprecation warning remains.
+
+Seven frontend component tests, TypeScript/Vite build, ESLint and Prettier passed. The new profile test verifies that a conflicting save retains edits and domain choices and focuses its error. The Playwright real-backend journey passed in 45.5s using a separate disposable database and actual API/worker/parser: synthetic CV upload, reviewed profile activation, reload persistence, domain diversification and a later preference edit. It checked 375/1440 widths, no page overflow and zero axe violations on the tested editor states. Desktop screenshot reviewed; fixture servers exited afterwards. This is local application evidence with mocked inference, not a live model evaluation or production Compose-network test.
+
+The user-provided real local PDF passed the bounded parsing-only utility: one page with text, 3,847 extracted characters. No extracted text was persisted or printed, no AI requests occurred, and the original is ignored by Git. Reading order and factual extraction have not been semantically assessed. Synthetic automated tests cover additional formats so this file is not a parser template or committed fixture.
+
+Remaining profile obligations include live provider implementation tested with mocked transports, task-model Settings, complete profile data-management controls and further replacement/conflict UX checks. All remaining PLAN.md milestones and deployment-host gates remain required.

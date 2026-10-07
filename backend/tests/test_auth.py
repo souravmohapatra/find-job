@@ -1,15 +1,14 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
-
 from app.auth import COOKIE_NAME
 from app.cli import create_owner
 from app.config import Settings
 from app.db import get_engine
 from app.models import User, UserSession
+from fastapi.testclient import TestClient
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 
 def sign_in(client: TestClient) -> dict[str, str]:

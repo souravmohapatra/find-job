@@ -18,8 +18,10 @@ os.environ["JOBFINDER_ALLOWED_ORIGINS"] = '["https://testserver"]'
 os.environ["JOBFINDER_ALLOWED_HOSTS"] = '["testserver"]'
 
 from app.cli import create_owner  # noqa: E402
+from app.config import get_settings  # noqa: E402
 from app.db import get_engine  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.tasks.worker import bootstrap_queue  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -27,14 +29,22 @@ def migrate() -> Generator[None, None, None]:
     config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).parents[1] / "migrations"))
     command.upgrade(config, "head")
+    bootstrap_queue()
     yield
     get_engine().dispose()
 
 
 @pytest.fixture(autouse=True)
-def clean_database() -> None:
+def clean_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "document_dir", tmp_path / "documents")
+    monkeypatch.setattr(get_settings(), "integration_mode", "mock")
     with get_engine().begin() as connection:
-        connection.execute(text("TRUNCATE sessions, login_buckets, users CASCADE"))
+        connection.execute(
+            text(
+                "TRUNCATE sessions, login_buckets, users, profile_revisions, profile_drafts, "
+                "profiles, documents, operation_intents, procrastinate_jobs CASCADE"
+            )
+        )
     create_owner("owner", "synthetic-test-password")
 
 

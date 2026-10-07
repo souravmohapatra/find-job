@@ -23,3 +23,7 @@ playwright-report/
 .secrets/
 .data/
 *.tsbuildinfo
+
+# User-provided local parsing examples; never commit real CVs.
+/SouravMohapatraCV.pdf
+/private-fixtures/

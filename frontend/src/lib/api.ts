@@ -24,7 +24,8 @@ export async function request(
   csrf?: string,
 ): Promise<unknown> {
   const headers = new Headers(options.headers);
-  if (options.body) headers.set('Content-Type', 'application/json');
+  if (options.body && !(options.body instanceof FormData))
+    headers.set('Content-Type', 'application/json');
   if (csrf) headers.set('X-CSRF-Token', csrf);
   let response: Response;
   try {

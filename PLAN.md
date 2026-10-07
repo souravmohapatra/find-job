@@ -1,6 +1,6 @@
 # Delivery plan
 
-Updated: 2026-10-07. Technical decisions are now authorized and documented. Implementation is now authorized and starting.
+Updated: 2026-10-07. Technical decisions are now authorized and documented. Implementation is active; current evidence and outstanding gates are recorded below.
 
 ## Intended outcome
 
@@ -34,3 +34,9 @@ Milestones are a plan; the user has now authorized implementation and its builds
 A focused application will reuse libraries rather than a whole platform. Keep the initial product to one owner/profile and selected-company monitoring. No embeddings/vector database, second AI judge, auto-apply, public SaaS, or broad application tracker is required.
 
 Selected OpenRouter model accuracy, source-specific generic extraction, dependency compatibility, API cost/latency, and deployment resource needs must be measured during implementation. These are verification obligations, not reasons to leave the architecture undecided. Actual host names, addresses, credentials and backup destination are installation inputs. Exact OpenRouter models are intentionally deferred by the user; task configuration and mocking permit implementation before selection, while live model acceptance waits for it.
+
+## Execution status
+
+- Milestone 1: dependencies, owner authentication, app shell, real PostgreSQL migrations and initial durable workers validated locally. Docker image builds, integrated private ingress and production network boundaries remain pending; the development database uses the explicit host-network exception.
+- Milestone 2: local document parsing, reviewed profile revisions, preferences and diversification implemented with mock analysis; a real API/database/worker browser journey passes. Task-model Settings/live provider integration and remaining profile UX controls are in progress.
+- Milestones 3–7: pending. These remain part of the original delivery scope, including representative model/source checks and deployment-environment network validation. No release completion is claimed.
