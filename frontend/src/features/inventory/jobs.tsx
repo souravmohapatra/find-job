@@ -1,8 +1,10 @@
+import { assessmentLabel } from './assessment-label';
 import { useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Failure } from './shared';
+import { AssessmentPanel, FeedbackPanel } from './assessment';
 import { date, read, type Schemas } from './data';
 
 export function JobsPage() {
@@ -132,7 +134,7 @@ export function JobsPage() {
                 {(job.posting.locations ?? []).join(' · ') || 'Location not specified'}
               </p>
               <p className="field-help">
-                First seen {date(job.first_seen_at)} · {job.availability} · Not assessed
+                First seen {date(job.first_seen_at)} · {job.availability} · {assessmentLabel(job)}
               </p>
             </div>
             <span className="badge">{job.baseline ? 'Initial inventory' : 'New listing'}</span>
@@ -140,10 +142,15 @@ export function JobsPage() {
         ))}
       {jobs.data?.pages[0].items.length === 0 && (
         <section className="empty-state">
-          <h2>No collected jobs in this view</h2>
+          <h2>
+            {view === 'recommended'
+              ? 'No current shortlist entries in this view'
+              : 'No collected jobs in this view'}
+          </h2>
           <p>
-            Check your filters and company source status. This does not establish that a company has
-            no vacancies.
+            Check filters, company sources and assessment status in All jobs. Pending or failed
+            assessments are not rejections, and this does not establish that a company has no
+            vacancies.
           </p>
           <Link to="/companies">View company watches</Link>
         </section>
@@ -170,6 +177,10 @@ export function JobPage() {
   const job = useQuery({
     queryKey: ['job', id],
     queryFn: () => read<Schemas['JobDetail']>(`/jobs/${id}`),
+    refetchInterval: (query) =>
+      ['queued', 'running'].includes(query.state.data?.assessment_operation?.state ?? '')
+        ? 2000
+        : false,
   });
   if (job.isPending)
     return (
@@ -208,13 +219,8 @@ export function JobPage() {
         {data.posting.workplace && <p>Workplace: {data.posting.workplace}</p>}
         {data.posting.employment_type && <p>Employment: {data.posting.employment_type}</p>}
       </section>
-      <section className="panel">
-        <h2>Assessment</h2>
-        <p>
-          This role has not been assessed. Matching is still being built; you can review the
-          original listing now.
-        </p>
-      </section>
+      <AssessmentPanel job={data} />
+      <FeedbackPanel key={data.id} job={data} />
       <section className="panel">
         <h2>Listing history</h2>
         <p>

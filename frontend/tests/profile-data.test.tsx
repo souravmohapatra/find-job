@@ -54,3 +54,27 @@ test('failed retention change rolls back the toggle and keeps profile data', asy
   });
   client.clear();
 });
+
+test('profile purge clears cached job explanations and feedback', async () => {
+  vi.spyOn(api, 'request').mockImplementation(async (_path, options) =>
+    options?.method === 'POST' ? undefined : { next_offset: null, documents: [] },
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(['job', 'synthetic'], { feedback: { reason: 'Synthetic private note' } });
+  client.setQueryData(['jobs', 'all'], { items: [{ assessment: 'Synthetic explanation' }] });
+  const purged = vi.fn();
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={client}>
+      <ProfileData csrf="synthetic" onPurged={purged} />
+    </QueryClientProvider>,
+  );
+  await user.click(screen.getByText('CV storage and profile data'));
+  await user.click(screen.getByText('Delete profile and all CV data'));
+  await user.type(screen.getByLabelText('Type DELETE PROFILE to confirm'), 'DELETE PROFILE');
+  await user.click(screen.getByRole('button', { name: 'Delete profile and CVs' }));
+  await waitFor(() => expect(purged).toHaveBeenCalled());
+  expect(client.getQueryData(['job', 'synthetic'])).toBeUndefined();
+  expect(client.getQueryData(['jobs', 'all'])).toBeUndefined();
+  client.clear();
+});

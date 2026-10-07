@@ -203,3 +203,17 @@ class JobAssessment(Base):
     report: Mapped[dict[str, Any]] = mapped_column(JSONB)
     operation_id: Mapped[UUID] = mapped_column(ForeignKey("operation_intents.id"), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class JobFeedback(Base):
+    __tablename__ = "job_feedback"
+    __table_args__ = (
+        CheckConstraint("value IN ('relevant','not_relevant')", name="feedback_value"),
+    )
+    job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    value: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(String(2000), default="")
+    revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

@@ -315,3 +315,108 @@ def test_mode_change_needs_new_result_and_distinct_intent(monkeypatch, client):
     assert result["assessment"]["integration_mode"] == "live"
     with Session(get_engine()) as db:
         assert db.scalar(select(func.count()).select_from(JobAssessment)) == 2
+
+
+def test_manual_reassessment_joins_retries_and_supports_closed_jobs(client):
+    from uuid import UUID
+
+    from test_inventory_api import auth
+
+    with Session(get_engine()) as db, db.begin():
+        _, _, identifier = setup(db)
+        job = db.scalar(select(Job))
+        job.availability = "closed"
+        job_id = job.id
+    path = f"/api/v1/jobs/{job_id}/reassess"
+    assert client.post(path).status_code == 401
+    headers = auth(client)
+    assert client.post(path).status_code == 403
+    first = client.post(path, headers=headers)
+    assert first.status_code == 202 and UUID(first.json()["operation_id"]) == identifier
+    assert client.post(path, headers=headers).json() == first.json()
+    with Session(get_engine()) as db, db.begin():
+        operation = db.get(Operation, identifier)
+        operation.state = "failed"
+        operation.error_message = "Synthetic error"
+        operation.attempts = 3
+    assert client.post(path, headers=headers).json() == first.json()
+    with Session(get_engine()) as db:
+        operation = db.get(Operation, identifier)
+        assert operation.state == "queued" and operation.attempts == 0
+        assert operation.error_message is None
+
+
+def test_feedback_conflict_does_not_change_matching_and_purge_removes_notes(monkeypatch, client):
+    from app.collection.models import JobFeedback
+    from test_inventory_api import auth
+
+    monkeypatch.setattr(matching, "assess", lambda *args: assessment())
+    with Session(get_engine()) as db, db.begin():
+        _, _, identifier = setup(db)
+        job_id = db.scalar(select(Job.id))
+    process_operation(identifier)
+    path = f"/api/v1/jobs/{job_id}/feedback"
+    assert client.put(path, json={}).status_code == 401
+    headers = auth(client)
+    body = {
+        "value": "not_relevant",
+        "reason": "Synthetic personal preference",
+        "expected_revision": 0,
+    }
+    assert client.put(path, json=body).status_code == 403
+    saved = client.put(path, headers=headers, json=body)
+    assert saved.status_code == 200 and saved.json()["revision"] == 1
+    assert client.put(path, headers=headers, json=body).status_code == 409
+    detail = client.get(f"/api/v1/jobs/{job_id}").json()
+    assert detail["feedback"]["reason"] == body["reason"]
+    assert detail["assessment"]["category"] == "possible_match"
+    assert len(client.get("/api/v1/jobs").json()["items"]) == 1
+    assert (
+        client.put(
+            path, headers=headers, json=body | {"reason": "x" * 2001, "expected_revision": 1}
+        ).status_code
+        == 422
+    )
+    changed = client.put(
+        path, headers=headers, json=body | {"value": "relevant", "expected_revision": 1}
+    )
+    assert changed.json()["revision"] == 2
+    assert (
+        client.post(
+            "/api/v1/profile/purge", headers=headers, json={"confirmation": "DELETE PROFILE"}
+        ).status_code
+        == 204
+    )
+    with Session(get_engine()) as db:
+        assert db.scalar(select(JobFeedback)) is None
+        assert db.get(Job, job_id) is not None
+
+
+def test_reassessment_key_replays_without_new_attempt_and_rejects_another_job(client):
+    from app.collection.models import Job
+    from test_inventory_api import auth
+
+    with Session(get_engine()) as db, db.begin():
+        _, _, identifier = setup(db)
+        job = db.scalar(select(Job))
+        job_id = job.id
+        other = Job(company_id=job.company_id, canonical_key="d" * 64)
+        db.add(other)
+        db.flush()
+        other_id = other.id
+    headers = auth(client) | {"Idempotency-Key": "synthetic-assessment-request"}
+    path = f"/api/v1/jobs/{job_id}/reassess"
+    first = client.post(path, headers=headers)
+    assert first.status_code == 202
+    with Session(get_engine()) as db, db.begin():
+        db.get(Operation, identifier).state = "failed"
+    assert client.post(path, headers=headers).json() == first.json()
+    with Session(get_engine()) as db:
+        assert db.get(Operation, identifier).state == "failed"
+    assert client.post(f"/api/v1/jobs/{other_id}/reassess", headers=headers).status_code == 409
+    assert (
+        client.post(path, headers=headers | {"Idempotency-Key": "new-explicit-retry"}).status_code
+        == 202
+    )
+    with Session(get_engine()) as db:
+        assert db.get(Operation, identifier).state == "queued"

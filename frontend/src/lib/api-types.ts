@@ -194,6 +194,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/jobs/{identifier}/reassess': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reassess */
+    post: operations['reassess_api_v1_jobs__identifier__reassess_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/jobs/{identifier}/feedback': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Feedback */
+    put: operations['feedback_api_v1_jobs__identifier__feedback_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/settings/ai': {
     parameters: {
       query?: never;
@@ -1121,6 +1155,38 @@ export interface components {
       /** Experience Years Override */
       experience_years_override?: number | null;
     };
+    /** FeedbackInput */
+    FeedbackInput: {
+      /**
+       * Value
+       * @enum {string}
+       */
+      value: 'relevant' | 'not_relevant';
+      /**
+       * Reason
+       * @default
+       */
+      reason: string;
+      /** Expected Revision */
+      expected_revision: number;
+    };
+    /** FeedbackView */
+    FeedbackView: {
+      /**
+       * Value
+       * @enum {string}
+       */
+      value: 'relevant' | 'not_relevant';
+      /** Reason */
+      reason: string;
+      /** Revision */
+      revision: number;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -1170,6 +1236,7 @@ export interface components {
       assessment_status: 'not_assessed' | 'stale' | 'assessed';
       assessment?: components['schemas']['AssessmentView'] | null;
       assessment_operation?: components['schemas']['OperationView'] | null;
+      feedback?: components['schemas']['FeedbackView'] | null;
       /** Sources */
       sources: components['schemas']['SourceView'][];
       /** Revision Count */
@@ -2145,6 +2212,74 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['JobDetail'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  reassess_api_v1_jobs__identifier__reassess_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'Idempotency-Key'?: string | null;
+      };
+      path: {
+        identifier: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OperationAccepted'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  feedback_api_v1_jobs__identifier__feedback_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identifier: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['FeedbackInput'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['FeedbackView'];
         };
       };
       /** @description Validation Error */

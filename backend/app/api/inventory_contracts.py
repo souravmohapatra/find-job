@@ -114,7 +114,22 @@ class JobPage(BaseModel):
     matching_available: bool = False
 
 
+class FeedbackInput(Input):
+    value: Literal["relevant", "not_relevant"]
+    reason: str = Field(default="", max_length=2000)
+    expected_revision: int = Field(ge=0)
+
+
+class FeedbackView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    value: Literal["relevant", "not_relevant"]
+    reason: str
+    revision: int
+    updated_at: datetime
+
+
 class JobDetail(JobView):
+    feedback: FeedbackView | None = None
     sources: list[SourceView]
     revision_count: int
 

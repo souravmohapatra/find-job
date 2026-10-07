@@ -477,6 +477,9 @@ def purge_profile(body: PurgeConfirmation, session: Auth, db: DB) -> None:
         (get_settings().document_dir / document.storage_key).unlink(missing_ok=True)
     db.execute(delete(ProfileDraft))
     db.execute(delete(Document))
+    from app.collection.models import JobFeedback
+
+    db.execute(delete(JobFeedback))
     db.execute(delete(ProfileRevision))
     profile.current_revision += 1
     db.commit()

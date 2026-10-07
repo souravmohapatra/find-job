@@ -327,7 +327,13 @@ test('company watch → source controls → all jobs → detail and retained fil
   await expect(page.getByRole('link', { name: 'Strategy manager', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: 'Legal adviser', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Legal adviser', exact: true })).toBeVisible();
-  await expect(page.getByText(/This role has not been assessed/)).toBeVisible();
+  await expect(page.getByText(/This role has no current assessment/)).toBeVisible();
+  await page.getByRole('radio', { name: 'Not relevant', exact: true }).check();
+  await page.getByLabel('Reason (optional)').fill('Synthetic feedback note');
+  await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
+  await expect(page.getByText('Feedback saved.', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('Reason (optional)')).toHaveValue('Synthetic feedback note');
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

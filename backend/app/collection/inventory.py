@@ -88,7 +88,7 @@ def update_availability(db: Session, job: Job) -> None:
     job.availability = "active" if any(row.available for row in associations) else "closed"
 
 
-def assess_intent(db: Session, job: Job, revision: JobRevision) -> None:
+def assess_intent(db: Session, job: Job, revision: JobRevision) -> Operation | None:
     profile = db.get(Profile, 1)
     approved = (
         db.scalar(
@@ -98,9 +98,9 @@ def assess_intent(db: Session, job: Job, revision: JobRevision) -> None:
         else None
     )
     if approved is None:
-        return  # A later profile activation expands the full inventory for assessment.
+        return None  # A later profile activation expands the full inventory for assessment.
     config_id = capture(db, "job_matching")
-    create_operation(
+    return create_operation(
         db,
         "job_assess",
         f"{revision.id}:{approved.id}:{config_id}:{POLICY_VERSION}:{get_settings().integration_mode}",
