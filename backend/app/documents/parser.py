@@ -4,6 +4,7 @@ import json
 import resource
 import sys
 import zipfile
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 MAX_TEXT = 200_000
@@ -51,16 +52,31 @@ def extract(path: Path, media_type: str) -> list[dict[str, str | int | None]]:
             if any("vbaproject" in name.lower() for name in names):
                 raise DocumentError("Macro-enabled documents are not supported.")
         from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+
+        def blocks(items: Iterable[Paragraph | Table], depth: int = 0) -> Iterator[str]:
+            if depth > 32:
+                raise DocumentError("The DOCX contains excessively nested tables.")
+            for item in items:
+                if isinstance(item, Paragraph):
+                    yield item.text
+                else:
+                    # Merged cells can appear more than once in the row/cell API.
+                    seen: set[object] = set()
+                    for row in item.rows:
+                        cells: list[str] = []
+                        for cell in row.cells:
+                            if cell._tc in seen:
+                                continue
+                            seen.add(cell._tc)
+                            cells.append("\n".join(blocks(cell.iter_inner_content(), depth + 1)))
+                        yield " | ".join(cells)
 
         doc = Document(str(path))
-        for index, paragraph in enumerate(doc.paragraphs):
-            segments.append((paragraph.text, None, index + 1))
-        # Tables often contain the work history; do not silently omit them.
-        for table in doc.tables:
-            for row in table.rows:
-                segments.append(
-                    (" | ".join(cell.text for cell in row.cells), None, len(segments) + 1)
-                )
+        # Preserve body order, including tables between headings and nested cell content.
+        for index, text in enumerate(blocks(doc.iter_inner_content())):
+            segments.append((text, None, index + 1))
     else:
         for index, text in enumerate(path.read_text(encoding="utf-8-sig").splitlines()):
             segments.append((text, None, index + 1))

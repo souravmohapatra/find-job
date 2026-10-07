@@ -384,3 +384,37 @@ def test_stalled_queue_job_is_recovered_without_duplicate_document(client: TestC
     assert client.get(result["status_url"]).json()["state"] == "succeeded"
     with Session(get_engine()) as db:
         assert db.scalar(select(func.count()).select_from(Document)) == 1
+
+
+def test_docx_preserves_section_order_nested_tables_and_merged_cells(client: TestClient) -> None:
+    doc = Docx()
+    doc.add_paragraph("Synthetic teacher")
+    doc.add_paragraph("Employment")
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "School Alpha"
+    table.cell(0, 1).text = "2019–2022"
+    merged = table.cell(1, 0).merge(table.cell(1, 1))
+    merged.text = "Curriculum lead"
+    merged.add_table(rows=1, cols=1).cell(0, 0).text = "Mentored six teachers"
+    doc.add_paragraph("Education")
+    doc.add_table(rows=1, cols=1).cell(0, 0).text = "Synthetic teaching qualification"
+    doc.add_paragraph("Languages")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    draft = draft_for(client, upload(client, auth(client), buffer.getvalue()))
+    text = "\n".join(span["text"] for span in draft["spans"])
+    ordered = [
+        "Synthetic teacher",
+        "Employment",
+        "School Alpha",
+        "2019–2022",
+        "Curriculum lead",
+        "Mentored six teachers",
+        "Education",
+        "Synthetic teaching qualification",
+        "Languages",
+    ]
+    positions = [text.index(value) for value in ordered]
+    assert positions == sorted(positions)
+    assert text.count("Curriculum lead") == 1
+    assert text.count("Mentored six teachers") == 1
