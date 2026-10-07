@@ -1,0 +1,66 @@
+name: jobfinder
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: deploy/backend.Dockerfile
+  environment: &backend-env
+    JOBFINDER_ENVIRONMENT: production
+    JOBFINDER_INTEGRATION_MODE: mock
+    JOBFINDER_ALLOWED_ORIGINS: '["https://localhost:8443"]'
+    JOBFINDER_ALLOWED_HOSTS: '["localhost","127.0.0.1","api"]'
+  secrets: [db_password]
+  networks: [core]
+  volumes: [documents:/data/documents]
+  security_opt: [no-new-privileges:true]
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: jobfinder
+      POSTGRES_USER: jobfinder
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes: [postgres:/var/lib/postgresql/data]
+    networks: [core]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U jobfinder -d jobfinder']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    <<: *backend
+    command: [alembic, upgrade, head]
+    depends_on:
+      db: {condition: service_healthy}
+  api:
+    <<: *backend
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  edge:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    ports: ['127.0.0.1:8443:443']
+    volumes: [caddy_data:/data, caddy_config:/config]
+    networks: [core]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+secrets:
+  db_password:
+    file: .secrets/db_password
+volumes:
+  postgres:
+  documents:
+  caddy_data:
+  caddy_config:
+networks:
+  core:
+    internal: true

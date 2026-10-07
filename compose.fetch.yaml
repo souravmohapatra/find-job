@@ -1,0 +1,84 @@
+# Merge with compose.yaml. Fetching remains gated until deployment isolation tests pass.
+services:
+  queue-bootstrap:
+    extends:
+      file: compose.yaml
+      service: api
+    command: [python, -m, app.tasks, --bootstrap]
+    healthcheck:
+      disable: true
+    restart: 'no'
+  worker:
+    extends:
+      file: compose.yaml
+      service: api
+    command: [python, -m, app.tasks, --queues, 'control,fetch,notify', --concurrency, '4']
+    environment:
+      JOBFINDER_FETCHER_URL: http://fetcher:8001
+      JOBFINDER_FETCHER_TOKEN_FILE: /run/secrets/fetcher_token
+    secrets: [db_password, fetcher_token]
+    networks: [core, fetch_control]
+    healthcheck:
+      disable: true
+    depends_on:
+      queue-bootstrap:
+        condition: service_completed_successfully
+    cap_drop: [ALL]
+  ai-worker:
+    extends:
+      file: compose.yaml
+      service: api
+    command: [python, -m, app.tasks, --queues, ai, --concurrency, '2']
+    healthcheck:
+      disable: true
+    depends_on:
+      queue-bootstrap:
+        condition: service_completed_successfully
+    cap_drop: [ALL]
+  fetcher:
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    command: [uvicorn, app.fetcher.main:app, --host, '0.0.0.0', --port, '8001', --workers, '1', --no-access-log, --no-proxy-headers]
+    environment:
+      JOBFINDER_FETCH_PROXY_URL: http://egress-proxy:3128
+      JOBFINDER_FETCH_TOKEN_FILE: /run/secrets/fetcher_token
+      JOBFINDER_FETCH_STATE_FILE: /data/fetcher/origins.sqlite3
+      JOBFINDER_FETCH_ISOLATION_VERIFIED: 'false'
+    secrets: [fetcher_token]
+    volumes: [fetch_state:/data/fetcher]
+    networks: [fetch_control, fetch]
+    read_only: true
+    tmpfs: [/tmp:size=64m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 128
+    depends_on: [egress-proxy]
+    restart: unless-stopped
+  egress-proxy:
+    user: '13:13'
+    entrypoint: [/usr/sbin/squid]
+    command: [-f, /etc/squid/squid.conf, -NYC]
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=1777]
+    cap_drop: [ALL]
+    image: ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
+    volumes:
+      - ./deploy/squid.conf:/etc/squid/squid.conf:ro
+    networks: [fetch, outbound]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+secrets:
+  fetcher_token:
+    file: .secrets/fetcher_token
+volumes:
+  fetch_state:
+networks:
+  fetch_control:
+    internal: true
+  fetch:
+    internal: true
+  outbound: {}
