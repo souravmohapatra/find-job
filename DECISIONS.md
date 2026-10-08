@@ -1,5 +1,11 @@
 # Decision register
 
+## Deployment continuation update — 2026-10-08
+
+The owner will move continuation to the deployment environment, use a local LLM as the development agent, supply an OpenRouter API key privately, and create `@preset/job-finder` for application LLM testing. This supersedes the earlier statement that the initial test model reference is entirely unset. Keep profile_analysis, job_extraction and job_matching independently configurable; all may initially use the same preset. The development agent's local model does not replace OpenRouter in the application. Underlying preset models are selected by the owner in OpenRouter.
+
+The current application rejects preset identifiers and assumes concrete models in capability/response checks. Supporting the preset is remaining implementation work, not a verified capability. A finite live-test budget, private key and preset availability are still prerequisites. The proposed initial USD 1 / 20-attempt ceiling in [FINISH_DEVELOPMENT_AND_VALIDATE.md](FINISH_DEVELOPMENT_AND_VALIDATE.md) is a recommendation, not an approved budget. That guide records the ordered host, implementation and acceptance steps; no live request or deployment change occurred while preparing it.
+
 Updated: 2026-10-07. User requirements and delegated implementation decisions are distinguished below. Selected defaults can be revised with evidence; they are not claims of user approval of every detail or of runtime validation.
 
 ## Confirmed user requirements
