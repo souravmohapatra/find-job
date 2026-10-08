@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Job Finder backup nightly
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=10min
+Unit=jobfinder-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Job Finder encrypted nightly backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=jobfinder
+Group=jobfinder
+WorkingDirectory=/opt/find-job
+EnvironmentFile=/etc/jobfinder/backup.env
+ExecStart=/usr/bin/python3 /opt/find-job/scripts/backup.py --env-file /opt/find-job/deploy.env --destination ${BACKUP_DESTINATION} --gpg-home ${BACKUP_GPG_HOME} --recipient ${BACKUP_RECIPIENT} --retain
+UMask=0077
+TimeoutStartSec=3h
+TimeoutStopSec=15min
+KillMode=mixed

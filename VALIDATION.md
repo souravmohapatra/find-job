@@ -235,3 +235,12 @@ The recovery suite now includes encrypted-stream/integrity checks, public-key-on
 This evidence does not establish application-level recovery, production quiescence orchestration, nightly scheduling/retention, measured RPO/RTO, or intended-host deployment acceptance. Backup restart failure orchestration is mocked; a real deployment drill remains required.
 
 Final recovery regression: all 15 checks passed in 22.043s (exit 0). Ruff and formatting passed for all 18 scripts; git diff --check passed.
+
+
+## Backup retention and timer templates — 2026-10-08
+
+Six synthetic retention tests pass (0.082s), covering seven daily/four weekly selection, same-day duplicates, ISO year transition, protected foreign/incomplete/future/unexpected directories, symlink/hardlink exclusion and no pruning after failed capture. Only temporary synthetic snapshots were removed. An initial deletion-count assertion used a fixture time ahead of the wall clock; freezing the test clock resolved the mismatch without changing retention behavior.
+
+Systemd unit verification passed for both supplied templates (exit 0); unrelated existing host-unit PIDFile warnings were emitted. Calendar parsing showed the next two 02:00 host-local occurrences. No units were installed/enabled, no real backup pruned, and no scheduled execution or downtime/restart acceptance is claimed.
+
+Final combined recovery/retention run: 21 tests passed in 11.983s (exit 0). Ruff/format passed for all 20 scripts; git diff --check passed.

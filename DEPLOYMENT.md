@@ -143,10 +143,39 @@ python3 scripts/restore.py --backup /private/backup-directory/jobfinder-SNAPSHOT
   --gpg-home /private/restore-keyring --record-directory /private/empty-restore-record
 ```
 
-Backup pauses mutation-producing services, streams the database dump and five state volumes directly through encryption, and attempts to restart only previously active services. Run it during a quiet period without concurrent deployment/container changes. A successful directory is named `jobfinder-*`; `.incomplete-*` indicates failure and must not be treated as a completed backup. The private `operation.json` records restart failures and container identities. Following power loss or a forced kill, inspect this journal and actual container state and resume the listed services using the original deployment configuration; process cleanup cannot recover from SIGKILL or host failure automatically. Do not run concurrent backups from different checkouts.
+Backup pauses mutation-producing services, streams the database dump and five state volumes directly through encryption, and attempts to restart only previously active services. Run it during a quiet period without concurrent deployment/container changes. A successful directory is named `jobfinder-*`; `.incomplete-*` indicates failure and must not be treated as a completed backup. The private `operation.json` records restart failures and container identities. Following power loss or a forced kill, inspect this journal and actual container state and resume the listed services using the original deployment configuration; process cleanup cannot recover from SIGKILL or host failure automatically. A destination-local lock prevents overlapping backups to the same directory, including from different checkouts. Do not run concurrent backups of one deployment to different destinations.
 
 Verification checks encrypted payload integrity, not backup provenance or application correctness. Restore only backups from a trusted location: possession of the public encryption key alone can produce a new encrypted archive. No plaintext staging files are created, but restored volumes necessarily contain private plaintext data and must remain protected.
 
 Restore refuses a nonempty record directory, creates fresh UUID-named volumes, and never overwrites deployment volumes. Extraction rejects links/special files and path escapes, with private permissions and application ownership. PostgreSQL uses a network-none container with TCP listening disabled. Application services, schedules and notifications are not started. Temporary containers are removed; restored volumes remain listed in the private journal, including partial volumes if restoration fails. Preserve those names for deliberate cleanup or recovery; never use a broad volume-prune command.
 
-The synthetic drill checks files from every state archive and a restored database row. This does not prove an operational application restore. Before cutover on the intended server, verify schema/application compatibility, document availability and owner login in an isolated deployment, reestablish the database password from separately protected secrets, and account for external provider usage and potentially already-delivered notifications since the snapshot. Keep workers and outbound delivery disabled until that reconciliation is complete. Deliberately attach the validated restored volumes only during the recovery maintenance window. Automated cutover, nightly scheduling/retention and a full deployed-application restore drill remain pending; the 24-hour recovery-point/two-hour recovery-time targets are unmeasured.
+The synthetic drill checks files from every state archive and a restored database row. This does not prove an operational application restore. Before cutover on the intended server, verify schema/application compatibility, document availability and owner login in an isolated deployment, reestablish the database password from separately protected secrets, and account for external provider usage and potentially already-delivered notifications since the snapshot. Keep workers and outbound delivery disabled until that reconciliation is complete. Deliberately attach the validated restored volumes only during the recovery maintenance window. Automated cutover and a full deployed-application restore drill remain pending; the 24-hour recovery-point/two-hour recovery-time targets are unmeasured.
+
+
+## Nightly scheduling and retention
+
+The supplied `deploy/systemd/jobfinder-backup.service` and `.timer` are installation templates, not enabled services. Defaults assume the checkout is `/opt/find-job`, the deployment account/group is `jobfinder`, and `/etc/jobfinder/backup.env` contains the three values from `deploy/systemd/backup.env.example`. Adapt those paths and account names to the intended host. The account must own the private backup/keyring directories, read the deployment configuration/secrets, and already have Docker access. Use the same deployment account for manual and scheduled backups.
+
+The timer runs at 02:00 in the host timezone, with up to ten minutes of jitter. `Persistent=true` schedules one catch-up after missed downtime. This host-maintenance schedule is independent of the app's configurable 19:00 notification timezone. Change `OnCalendar` if desired. The service has a three-hour maximum runtime and allows fifteen minutes for termination cleanup; `KillMode=mixed` initially signals the Python parent so it can attempt to resume writers. A forced kill/power loss still requires journal-based recovery.
+
+After a manual backup and isolated restore have succeeded on the intended host, install the adapted service/timer in `/etc/systemd/system/` and the configuration in `/etc/jobfinder/backup.env`. Then run:
+
+```sh
+sudo systemd-analyze verify /etc/systemd/system/jobfinder-backup.service /etc/systemd/system/jobfinder-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now jobfinder-backup.timer
+systemctl list-timers jobfinder-backup.timer
+journalctl -u jobfinder-backup.service
+```
+
+Installation and an actual scheduled run remain host acceptance tasks. This development session only checked unit syntax/calendar parsing; it did not install accounts, units or host configuration. Check service failures and available backup space rather than assuming an enabled timer proves a valid snapshot.
+
+`--retain`, included in the service template, prunes only after the current backup succeeds. It retains the newest available snapshot for each of seven UTC dates and four ISO weeks; daily/weekly selections may overlap. It does not make duplicate weekly copies. A public-key-only host checks expected private file layout and completion journal, not decryption integrity; keep performing private-key verification/restore drills. Unexpected directories, incomplete snapshots, other projects, future dates, symlinks/hardlinks and non-private files are untouched and require manual review. They can consume disk space indefinitely. Backups and decryption keys still need a separately protected/off-host copy.
+
+Preview the current deletion candidates without changing anything:
+
+```sh
+python3 scripts/retention.py --destination /private/backup-directory --project jobfinder
+```
+
+Use the actual Compose project name if changed. The preview is a point-in-time selection, not authorization to delete arbitrary paths. Without `--retain`, the backup command never prunes. Keep the backup destination owner-only and do not modify its contents during a backup/retention run.

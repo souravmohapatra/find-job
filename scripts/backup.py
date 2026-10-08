@@ -5,6 +5,7 @@ import fcntl
 import json
 import os
 import signal
+import stat
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from recovery import (
     private_directory,
     verify,
 )
+from retention import prune
 
 HELPER = "python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f"
 WRITERS = ("edge", "api", "worker", "ai-worker", "fetcher", "ntfy")
@@ -250,6 +252,11 @@ def main() -> None:
     parser.add_argument(
         "--verify", type=Path, help="Verify an encrypted backup without restoring it"
     )
+    parser.add_argument(
+        "--retain",
+        action="store_true",
+        help="After successful backup, retain seven daily and four weekly snapshots",
+    )
     args = parser.parse_args()
     os.umask(0o077)
     if args.verify:
@@ -273,10 +280,13 @@ def main() -> None:
         "-p",
         config["name"],
     ]
-    lock_dir = ROOT / ".data"
-    lock_dir.mkdir(mode=0o700, exist_ok=True)
-    private_directory(lock_dir)
-    with (lock_dir / "backup.lock").open("a") as lock:
+    descriptor = os.open(
+        destination / ".backup.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600
+    )
+    with os.fdopen(descriptor, "a") as lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise ValueError("Backup lock must be an owned private regular file.")
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         signal.signal(signal.SIGTERM, interrupted)
         name = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
@@ -291,6 +301,10 @@ def main() -> None:
         pending.rename(final)
         sync_directory(destination)
         print(f"Encrypted backup completed: {final.name}")
+        if args.retain:
+            count = prune(destination, config["name"])
+            sync_directory(destination)
+            print(f"Retention completed: {count} expired snapshots removed.")
         print("Back up secret files and the decryption key separately. Run a restore drill.")
 
 
