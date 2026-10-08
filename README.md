@@ -29,6 +29,10 @@ Selected foundation: React/TypeScript/Vite, FastAPI/Python, PostgreSQL with Proc
 
 Start with CONTEXT.md, IMPLEMENTATION.md and PLAN.md. Decisions are documented; installation-specific values and execution evidence remain outstanding.
 
+## Dependency lockfiles are tracked source inputs
+
+Keep `backend/uv.lock` and `frontend/package-lock.json` in Git. They record resolved dependency versions and integrity hashes for reproducible installations; they are not build outputs. Generated environments, `node_modules` and frontend build output remain ignored. The existing lockfiles still reference the previous private package registry and need package-manager-based migration and validation on the deployment host. Do not delete them, add them to `.gitignore`, or mechanically substitute unverified artifact URLs. Their current registry references do not imply that a public-registry installation has passed.
+
 ## Current development checks
 
 With frontend dependencies installed through the configured npm proxy:

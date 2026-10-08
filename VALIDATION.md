@@ -162,7 +162,7 @@ These are mocked-inference workflow checks, not real-source/model-quality or bro
 
 ### Notification calendar foundation
 
-Extraction phase saved as 2a99392. Added owner-timezone daily slot calculation, independent of the host timezone and collection interval. It chooses the first repeated occurrence and advances nonexistent minute-granular wall times to the first valid minute, including half-hour gaps and skipped dates. Future-slot calculation never schedules a downtime catch-up. Nine calendar tests passed (1.14s), covering London winter/summer/gap/fold, Lord Howe, Apia, owner-local dates and naive-time rejection. Ruff and strict mypy (53 files) pass. This is the calendar foundation only: persisted settings/slots, event and delivery ledgers, worker/API/UI wiring, ntfy transport and recovery remain to implement. No message was sent or dependency fetched. The complete goal remains active.
+Extraction phase saved as 69dd4b5. Added owner-timezone daily slot calculation, independent of the host timezone and collection interval. It chooses the first repeated occurrence and advances nonexistent minute-granular wall times to the first valid minute, including half-hour gaps and skipped dates. Future-slot calculation never schedules a downtime catch-up. Nine calendar tests passed (1.14s), covering London winter/summer/gap/fold, Lord Howe, Apia, owner-local dates and naive-time rejection. Ruff and strict mypy (53 files) pass. This is the calendar foundation only: persisted settings/slots, event and delivery ledgers, worker/API/UI wiring, ntfy transport and recovery remain to implement. No message was sent or dependency fetched. The complete goal remains active.
 
 
 ### Notification ledger validated locally

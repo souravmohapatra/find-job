@@ -1,6 +1,6 @@
 # Finish development and validate on the deployment host
 
-Prepared: 2026-10-08. Inspected source baseline: `42041d5`, following `2b60f92` and `6b72f22`, plus the current uncommitted progress record. This guide is an execution plan, not evidence that the remaining work has passed.
+Prepared: 2026-10-08. Inspected source baseline: `2e5a02b`, following `799a836` and `ccae444`, plus the current uncommitted progress record. This guide is an execution plan, not evidence that the remaining work has passed.
 
 ## 1. Mission and reading order
 
@@ -68,7 +68,7 @@ Some documents contain historical summaries that are now stale. Use dated eviden
 | Frontend | 30 component tests and 11 integration browser journeys in the recorded route-splitting phase | New-host/browser availability and built production-edge journeys |
 | Backend | Recorded full suite reached 287 tests before later standalone operations work | Fresh current suite, new preset/browser changes |
 | Compose | Ten service definitions, pinned base images, template checks | Full builds, persistent-volume initialization, standard networking, ingress/isolation |
-| Backups | 21 recovery/retention tests including disposable full data restore; commits `2b60f92`, `42041d5` | Actual deployment snapshot, isolated application restore, timer install/run |
+| Backups | 21 recovery/retention tests including disposable full data restore; commits `799a836`, `2e5a02b` | Actual deployment snapshot, isolated application restore, timer install/run |
 | Browser fetching | Planned; Python Playwright installation failed before manifest/lock changed | Dependency, browser runtime, rendering implementation and network enforcement |
 
 Historical resolved issues: the development database worked with a loopback-only host-network override; Caddy's binary file capability was removed in its runtime image stage so it can execute with dropped capabilities. Do not remove these recorded fixes, and do not assume the host-network override validates production bridges.
