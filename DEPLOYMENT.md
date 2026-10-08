@@ -128,3 +128,25 @@ Fetcher's `JOBFINDER_FETCH_ISOLATION_VERIFIED` remains hard-coded false. Interna
 The initial non-root Caddy check failed with `exec /usr/bin/caddy: operation not permitted` (exit 255). Inspection identified the inherited `cap_net_bind_service=ep` file capability. The runtime-base image removes it because all container listener ports are above 1024. That stage builds from the cached base, and Caddy adapt/validation now passes under the same non-root, read-only, cap-drop-ALL, network-none restrictions. This is resolved image configuration, not a host-security/network workaround. Full static serving, API routing, TLS client trust and host ingress remain unverified.
 
 The non-root ntfy image builds offline from the pinned cached base, owns its state directory, and has a health check. `python3 scripts/check-ntfy.py` validates a disposable network-none server with synthetic credentials: anonymous denial, publish-only bearer-token access, rejection of publisher reads/unrelated topics, reader-only cached-message access and a matching receipt. It removes its own temporary container and never publishes ports or contacts real devices. These checks do not prove app-worker-to-ntfy Compose delivery or phone notification delivery. Normal Compose connectivity, backup/restore and full application image builds remain open.
+
+## Basic encrypted backup and isolated restore
+
+Use an existing owner-only directory (mode 0700) on the backup disk and a dedicated GPG home (also 0700). Import the selected recipient's public key there; use its full fingerprint. Keep its private decryption key and a separately protected copy of deployment secrets off the application host. These scripts require installed GPG, Docker/Compose and the pinned cached Python/PostgreSQL images; they never fetch images. An unattended backup needs only the public key. Restore requires an available private key and, for a protected key, an unlocked GPG agent.
+
+```sh
+python3 scripts/backup.py --env-file deploy.env \
+  --destination /private/backup-directory --gpg-home /private/backup-public-keyring \
+  --recipient FULL_RECIPIENT_FINGERPRINT
+python3 scripts/backup.py --verify /private/backup-directory/jobfinder-SNAPSHOT \
+  --gpg-home /private/restore-keyring
+python3 scripts/restore.py --backup /private/backup-directory/jobfinder-SNAPSHOT \
+  --gpg-home /private/restore-keyring --record-directory /private/empty-restore-record
+```
+
+Backup pauses mutation-producing services, streams the database dump and five state volumes directly through encryption, and attempts to restart only previously active services. Run it during a quiet period without concurrent deployment/container changes. A successful directory is named `jobfinder-*`; `.incomplete-*` indicates failure and must not be treated as a completed backup. The private `operation.json` records restart failures and container identities. Following power loss or a forced kill, inspect this journal and actual container state and resume the listed services using the original deployment configuration; process cleanup cannot recover from SIGKILL or host failure automatically. Do not run concurrent backups from different checkouts.
+
+Verification checks encrypted payload integrity, not backup provenance or application correctness. Restore only backups from a trusted location: possession of the public encryption key alone can produce a new encrypted archive. No plaintext staging files are created, but restored volumes necessarily contain private plaintext data and must remain protected.
+
+Restore refuses a nonempty record directory, creates fresh UUID-named volumes, and never overwrites deployment volumes. Extraction rejects links/special files and path escapes, with private permissions and application ownership. PostgreSQL uses a network-none container with TCP listening disabled. Application services, schedules and notifications are not started. Temporary containers are removed; restored volumes remain listed in the private journal, including partial volumes if restoration fails. Preserve those names for deliberate cleanup or recovery; never use a broad volume-prune command.
+
+The synthetic drill checks files from every state archive and a restored database row. This does not prove an operational application restore. Before cutover on the intended server, verify schema/application compatibility, document availability and owner login in an isolated deployment, reestablish the database password from separately protected secrets, and account for external provider usage and potentially already-delivered notifications since the snapshot. Keep workers and outbound delivery disabled until that reconciliation is complete. Deliberately attach the validated restored volumes only during the recovery maintenance window. Automated cutover, nightly scheduling/retention and a full deployed-application restore drill remain pending; the 24-hour recovery-point/two-hour recovery-time targets are unmeasured.

@@ -227,3 +227,11 @@ These are isolated/runtime-configuration checks, not end-to-end deployment accep
 Production build, ESLint and Prettier pass; all 30 component tests pass (3.86s). Initial JavaScript is 137.34 KB gzip, down from 164.78 KB; inventory/profile/settings have separate chunks and the oversized-chunk warning is gone. This is build output, not a measured deployment latency improvement. Slow-loading and failed-route component tests verify loading announcements, retained navigation and a single main landmark.
 
 All 11 real API/database/worker/browser journeys passed in 2.3 minutes. Coverage includes profile review/conflicts/purge, model/billing settings, company detail/filter/scroll/focus return, discovery, matching, notifications and website rules, with existing responsive/axe checks. The added journey deliberately aborts the profile module download, verifies navigation to Settings still works, and reloads successfully after the request block is removed (4.0s). This uses the local Vite server, not the final Caddy deployment. No backend behavior, dependency version or provider integration changed.
+
+## Basic recovery scripts — 2026-10-08
+
+The recovery suite now includes encrypted-stream/integrity checks, public-key-only backup, producer and consumer failures, bounded timeout, symlink/traversal rejection, mocked writer-stop/restart failures, and real disposable PostgreSQL/volume checks. The first expanded run passed 14 of 15 tests; the new isolated restore drill exposed a chmod-after-chown failure in its restricted helper. Reordering those operations fixed the affected drill, which passed in 28.219s. It restored all five archives into fresh volumes, checked synthetic file bytes/private modes as UID 10001, restored a custom PostgreSQL dump and queried its synthetic row, and checked removal of the restore container. Tests clean up only their own databases/volumes/containers. No production backup or restore was attempted.
+
+This evidence does not establish application-level recovery, production quiescence orchestration, nightly scheduling/retention, measured RPO/RTO, or intended-host deployment acceptance. Backup restart failure orchestration is mocked; a real deployment drill remains required.
+
+Final recovery regression: all 15 checks passed in 22.043s (exit 0). Ruff and formatting passed for all 18 scripts; git diff --check passed.
