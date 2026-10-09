@@ -91,11 +91,14 @@ def transport(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]
                                 "tag": "example",
                                 "supported_parameters": state["parameters"],
                                 "context_length": 128000,
-                                "pricing": {
-                                    "prompt": state["price"],
-                                    "completion": "0.000002",
-                                    "request": "0",
-                                },
+                                "pricing": state.get(
+                                    "pricing",
+                                    {
+                                        "prompt": state["price"],
+                                        "completion": "0.000002",
+                                        "request": "0",
+                                    },
+                                ),
                             }
                         ]
                     }
@@ -946,6 +949,47 @@ def load_launcher() -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_tiered_pricing_overrides_and_discount_pass_capability(
+    transport: dict[str, Any],
+) -> None:
+    # Real Luna-style endpoints: scalar discount plus tiered override schedules must
+    # not be mistaken for unknown per-request charges.
+    transport["pricing"] = {
+        "prompt": "0.00000005",
+        "completion": "0.00000025",
+        "web_search": "0.01",
+        "input_cache_read": "0.000000005",
+        "input_cache_write": "0.0000000625",
+        "discount": 0,
+        "overrides": [
+            {
+                "min_prompt_tokens": 272000,
+                "prompt": "0.0000001",
+                "completion": "0.000000375",
+                "input_cache_read": "0.00000001",
+                "input_cache_write": "0.000000125",
+            }
+        ],
+    }
+    assert run(configuration()) .status == "ok"
+
+
+def test_override_tier_above_ceiling_rejects_endpoint(
+    transport: dict[str, Any],
+) -> None:
+    transport["pricing"] = {
+        "prompt": "0.000001",
+        "completion": "0.000002",
+        "request": "0",
+        "overrides": [
+            {"min_prompt_tokens": 272000, "prompt": "0.000001", "completion": "999"}
+        ],
+    }
+    with pytest.raises(OperationError) as raised:
+        run(configuration())
+    assert raised.value.code == "ai_capability"
 
 
 def test_run_probes_executes_luna_then_jev(

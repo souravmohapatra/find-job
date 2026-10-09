@@ -146,6 +146,60 @@ def money(value: Any) -> Decimal | None:
         return None
 
 
+CHARGE_KEYS = {
+    "prompt",
+    "completion",
+    "request",
+    "image",
+    "web_search",
+    "internal_reasoning",
+    "input_cache_read",
+    "input_cache_write",
+}
+# Documented pricing metadata that is not a per-request charge: discount is a rate
+# reduction, overrides are tiered schedules (validated with the same bounds), and
+# min_prompt_tokens is a volume threshold inside each override tier.
+METADATA_KEYS = {"discount", "overrides", "min_prompt_tokens"}
+
+
+def priced_within(pricing: Any, config: TaskConfig) -> bool:
+    """True when a pricing schedule (base or one override tier) stays within ceilings.
+
+    Uninterpretable values fail closed: the endpoint is skipped, never charged blind.
+    """
+    if not isinstance(pricing, dict):
+        return False
+    prompt, completion = money(pricing.get("prompt")), money(pricing.get("completion"))
+    request = money(pricing.get("request", "0"))
+    if prompt is None or completion is None or request is None:
+        return False
+    if (
+        prompt * 1000000 > config.prompt_price
+        or completion * 1000000 > config.completion_price
+        or request > config.request_price
+    ):
+        return False
+    if "discount" in pricing and money(pricing["discount"]) is None:
+        return False
+    # Text-only requests; unknown additional charges cannot be treated as zero.
+    if any(
+        money(value) != 0
+        for key, value in pricing.items()
+        if key not in CHARGE_KEYS | METADATA_KEYS
+    ):
+        return False
+    if money(pricing.get("internal_reasoning", "0")) not in {Decimal(0), completion}:
+        return False
+    cached_prices = [
+        money(pricing.get(key, "0")) for key in ("input_cache_read", "input_cache_write")
+    ]
+    if any(
+        price is None or price * 1000000 > config.prompt_price for price in cached_prices
+    ):
+        return False
+    return True
+
+
 def endpoint_tags(http: httpx.Client, config: TaskConfig) -> list[str]:
     """Recheck each model at dispatch; require a priced, capable endpoint for every fallback."""
     tags: set[str] = set()
@@ -188,42 +242,14 @@ def endpoint_tags(http: httpx.Client, config: TaskConfig) -> list[str]:
                 ):
                     continue
                 pricing = endpoint.get("pricing", {})
-                prompt, completion = money(pricing.get("prompt")), money(pricing.get("completion"))
-                request = money(pricing.get("request", "0"))
-                if prompt is None or completion is None or request is None:
+                if not priced_within(pricing, config):
                     continue
-                if (
-                    prompt * 1000000 > config.prompt_price
-                    or completion * 1000000 > config.completion_price
-                    or request > config.request_price
-                ):
-                    continue
-                # Text-only requests; unknown additional charges cannot be treated as zero.
-                if any(
-                    money(value) != 0
-                    for key, value in pricing.items()
-                    if key
-                    not in {
-                        "prompt",
-                        "completion",
-                        "request",
-                        "image",
-                        "web_search",
-                        "internal_reasoning",
-                        "input_cache_read",
-                        "input_cache_write",
-                    }
-                ):
-                    continue
-                if money(pricing.get("internal_reasoning", "0")) not in {Decimal(0), completion}:
-                    continue
-                cached_prices = [
-                    money(pricing.get(key, "0"))
-                    for key in ("input_cache_read", "input_cache_write")
-                ]
-                if any(
-                    price is None or price * 1000000 > config.prompt_price
-                    for price in cached_prices
+                # Tiered schedules price the same request differently by volume; every
+                # documented tier must also respect the configured ceilings.
+                overrides = pricing.get("overrides") or []
+                if not isinstance(overrides, list) or any(
+                    not isinstance(tier, dict) or not priced_within(tier, config)
+                    for tier in overrides
                 ):
                     continue
                 compatible.add(tag)
