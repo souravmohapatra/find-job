@@ -22,7 +22,14 @@ Frontend npm lock: the earlier fetch blocker (`ENOTFOUND` on the previous packag
 
 Frontend verified on the real checkout from the public-registry lock: `npm ci --no-audit --no-fund --registry=https://registry.npmjs.org/` exit 0 (321 packages added); `npm run build` exit 0 (Vite build, `dist/` produced). Frontend image: `docker build -f deploy/frontend.Dockerfile -t jobfinder-frontend:local .` exit 0 (image `e2c85fec1ff9`). Smoke: `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` printed `Valid configuration` (exit 0); `/srv/index.html` and `/srv/assets` present.
 
-Not yet run: frontend unit tests, backend test suite, compose stack, Luna/Jev live validation, budget ledger.
+Checks run on this host (all exit 0 unless stated):
+- Frontend unit tests: `npm test` (vitest) 30 of 30 passing across 11 files.
+- Test DB: created only `.secrets/test_db_password` (mode 0600, owner-only `.secrets`, value never printed). `init-dev.py` and `init-deployment.py` NOT run: `init-dev.py` would create `db_password` at 0600, and `init-deployment.py` would create `deploy/.env` and empty provider/publisher secrets. Pinned `postgres:17-alpine@sha256:b0f956…` pulled by digest over the normal bridge path. Started with `compose.test.yaml` only; `compose.test.host.yaml` NOT used. Published as `127.0.0.1:55439 -> 5432`; `ss` shows listener on 127.0.0.1:55439 only; healthy.
+- Backend: `ruff check` and `ruff format --check` on backend and scripts passed; strict `mypy app` passed (63 files).
+- Backend tests: `python3 scripts/test-backend.py -q` 287 passed in 61s against `jobfinder_test` on the disposable DB.
+
+Not yet run: frontend lint/format, browser (Playwright) suite, compose stack, Luna/Jev live validation, budget ledger (0 inference requests, US$0 spent to date).
+Remote: read-only `git ls-remote origin` shows `refs/heads/master` at `8448f6b`; the new commits `b732d4c`, `1070d2a`, `1dba8ce`, `e68773c` are local only. Per owner decision: history unchanged; no remote writes.
 
 History note: five earlier commits (`c3eacc7`, `00b4894`, `f8931ad`, `b732d4c`, `1dba8ce`) contain the previous package-host string in history. Removing it from history requires an explicit rewrite decision from the owner; the working tree and lock are clean.
 
