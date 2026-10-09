@@ -3,6 +3,9 @@
 from typing import Any
 from uuid import UUID, uuid4
 
+from fastapi import APIRouter, Response
+from sqlalchemy import func, select, text
+
 from app.ai.configuration import latest, limits
 from app.ai.contracts import (
     TASKS,
@@ -25,8 +28,6 @@ from app.domain.matching import POLICY_VERSION
 from app.errors import problem
 from app.profile_models import now
 from app.services.operations import create_operation, operation_response
-from fastapi import APIRouter, Response
-from sqlalchemy import func, select, text
 
 router = APIRouter(prefix="/settings/ai", tags=["settings"])
 
@@ -71,6 +72,10 @@ def update_ai(
     body: TaskUpdate, session: Auth, db: DB, response: Response, if_match: Expected = None
 ) -> dict[str, Any]:
     db.execute(text("SELECT pg_advisory_xact_lock(1012004)"))
+    if body.config.protocol == "decisions" and body.task != "job_matching":
+        raise problem(
+            422, "ai_protocol", "The Decisions protocol is supported only for job matching."
+        )
     previous = latest(db, body.task)
     revision = previous.revision if previous else 0
     check_revision(if_match, revision)

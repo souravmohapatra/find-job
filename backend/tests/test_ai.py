@@ -16,9 +16,10 @@ from sqlalchemy.orm import Session
 
 from app.ai import provider
 from app.ai.contracts import TaskConfig
+from app.ai.decisions import ChoiceAnswer, NoulAnswer, ScoreAnswer
 from app.ai.models import AiLimitsRow, InferenceCall, TaskRevision
 from app.ai.run_ledger import TOTAL_REQUESTS, RunLedger
-from app.ai.tasks import Probe, reconcile_call
+from app.ai.tasks import Probe, reconcile_call, validate_task
 from app.config import get_settings
 from app.db import get_engine
 from app.domain.profile import Evidence, Facts
@@ -67,6 +68,7 @@ def completion(content: object = None, **overrides: Any) -> dict[str, Any]:
 def transport(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
     state: dict[str, Any] = {
         "posts": [],
+        "urls": [],
         "responses": [completion()],
         "parameters": ["response_format", "structured_outputs", "temperature", "reasoning"],
         "price": "0.000001",
@@ -99,6 +101,7 @@ def transport(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]
                     }
                 },
             )
+        state["urls"].append(str(request.url))
         state["posts"].append(json.loads(request.content))
         response = state["responses"].pop(0)
         if isinstance(response, Exception):
@@ -603,3 +606,235 @@ def test_provider_reconciliation_records_provenance(transport: dict[str, Any]) -
         row = db.get(InferenceCall, call_id)
         assert row.cost_source == "provider" and row.accounted_at is not None
         assert row.state == "reconciled"
+
+
+# --- Decisions (Jev) adapter: Phase B mocked contract tests, no live traffic ---
+
+
+def decision_configuration(revision: int = 1, **overrides: Any) -> UUID:
+    config = TaskConfig(model="typesafe/jev-1.13", protocol="decisions", **overrides)
+    with Session(get_engine()) as db, db.begin():
+        row = TaskRevision(
+            task="job_matching", revision=revision, config=config.model_dump(mode="json")
+        )
+        db.add(row)
+        db.flush()
+        return row.id
+
+
+def decision_response(answers: dict[str, Any] | None = None, **overrides: Any) -> dict[str, Any]:
+    return {
+        "id": "gen-dec-synthetic",
+        "model": "typesafe/jev-1.13-20260917",
+        "provider": "TypeSafe",
+        "answers": answers
+        if answers is not None
+        else {"probe": {"type": "choice", "choice": "ok", "confidence": 0.9}},
+        "usage": {"input_tokens": 10, "output_tokens": 5, "cost": 0.00002},
+        **overrides,
+    }
+
+
+def test_decisions_probe_contract_versioned_model_and_ledger(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [decision_response()]
+    validate_task("job_matching", identifier, None)
+    assert transport["urls"] == ["https://openrouter.ai/api/alpha/decisions"]
+    request = transport["posts"][0]
+    assert request["model"] == "typesafe/jev-1.13"
+    assert request["provider"]["data_collection"] == "deny"
+    assert request["provider"]["allow_fallbacks"] is True
+    assert (
+        not {"messages", "response_format", "max_tokens", "temperature", "reasoning"}
+        & request.keys()
+    )
+    summary = RunLedger(get_settings().live_ledger_path).summary()
+    assert summary["attempts"] == 1
+    assert Decimal(summary["known_usd"]) == Decimal("0.00002")
+    assert summary["unresolved_calls"] == []
+
+
+def test_decisions_typed_contract_errors_are_terminal_without_repair(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    scenarios = [
+        {},
+        {"probe": {"type": "choice", "choice": "bogus"}},
+        {"probe": {"type": "noul", "noul": 0.5}},
+        {"probe": {"type": "noul", "noul": True}},
+        {
+            "probe": {
+                "type": "choice",
+                "choice": "ok",
+                "probabilities": {"ok": 0.5},
+            }
+        },
+        {
+            "extra": {"type": "choice", "choice": "ok"},
+            "probe": {"type": "choice", "choice": "ok"},
+        },
+    ]
+    for index, answers in enumerate(scenarios, start=1):
+        identifier = decision_configuration(revision=index)
+        transport["responses"] = [decision_response(answers)]
+        with pytest.raises(OperationError) as raised:
+            validate_task("job_matching", identifier, None)
+        assert raised.value.code == "ai_protocol", answers
+    assert len(transport["posts"]) == len(scenarios)
+
+
+def test_decisions_unknown_model_retains_billing_without_repair(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [decision_response(model="typesafe/other-1")]
+    with pytest.raises(OperationError) as raised:
+        validate_task("job_matching", identifier, None)
+    assert raised.value.code == "ai_model_mismatch"
+    assert len(transport["posts"]) == 1
+    summary = RunLedger(get_settings().live_ledger_path).summary()
+    assert Decimal(summary["known_usd"]) == Decimal("0.00002")
+
+
+def test_decisions_missing_cost_blocks_and_holds(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [decision_response(usage={"input_tokens": 10, "output_tokens": 5})]
+    with pytest.raises(OperationError) as raised:
+        validate_task("job_matching", identifier, None)
+    assert raised.value.code == "ai_cost_unknown"
+    summary = RunLedger(get_settings().live_ledger_path).summary()
+    assert Decimal(summary["held_usd"]) > 0
+    with Session(get_engine()) as db:
+        assert db.scalar(select(InferenceCall)).state == "unknown"
+
+
+def test_decisions_transport_failure_sends_no_duplicate(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [httpx.ConnectError("synthetic failure")]
+    with pytest.raises(OperationError) as raised:
+        validate_task("job_matching", identifier, None)
+    assert raised.value.code == "ai_transport"
+    assert len(transport["posts"]) == 1
+    summary = RunLedger(get_settings().live_ledger_path).summary()
+    assert Decimal(summary["held_usd"]) > 0
+
+
+def test_decisions_rate_limit_persists_cooldown(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [httpx.Response(429, headers={"Retry-After": "600"})]
+    with pytest.raises(OperationError):
+        validate_task("job_matching", identifier, None)
+    assert len(transport["posts"]) == 1
+    with Session(get_engine()) as db:
+        row = db.get(TaskRevision, identifier)
+        assert (
+            row
+            and row.cooldown_until is not None
+            and row.cooldown_until > now() + timedelta(seconds=595)
+        )
+
+
+def test_matching_decisions_adapter_builds_validated_assessment() -> None:
+    from app.ai.matching import decisions_adapter, evidence
+    from app.domain.matching import category, validate
+    from tests.synthetic_matching import FACTS, POSTINGS, PREFERENCES
+
+    posting = POSTINGS[0]
+    spans = evidence(FACTS, PREFERENCES, posting)
+    answers = {
+        "primary_function": ChoiceAnswer(choice="job:description"),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "relevance_band": ScoreAnswer(score=2.0),
+        "plausible_connection": NoulAnswer(noul=0.9),
+    }
+    assessment = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(answers)
+    assert assessment.relevance_score == 60 and assessment.relation == "aligned"
+    assert assessment.plausible_connection is True
+    assert any(item.span_id == "job:description" for item in assessment.function_evidence)
+    validate(assessment, PREFERENCES, spans)
+    assert category(assessment, PREFERENCES) == "possible_match"
+    unclear = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+        {
+            **answers,
+            "relation": ChoiceAnswer(choice="insufficient"),
+        }
+    )
+    assert unclear.relation == "unclear" and unclear.relevance_score is None
+    with pytest.raises(ValueError):
+        decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+            {**answers, "primary_function": ChoiceAnswer(choice="preference:desired_roles")}
+        )
+
+
+def test_matching_decisions_preference_outcome_requires_selected_support() -> None:
+    from uuid import uuid4
+
+    from app.ai.matching import decisions_adapter, evidence
+    from app.domain.matching import validate
+    from app.domain.profile import Criterion, Preferences
+    from tests.synthetic_matching import FACTS, POSTINGS
+
+    criterion = Criterion(
+        id=uuid4(), kind="other", description="London location", strength="required"
+    )
+    preferences = Preferences(desired_roles=["Strategy"], criteria=[criterion])
+    posting = POSTINGS[0]
+    spans = evidence(FACTS, preferences, posting)
+    base = {
+        "primary_function": ChoiceAnswer(choice="job:description"),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "relevance_band": ScoreAnswer(score=2.0),
+        "plausible_connection": NoulAnswer(noul=0.2),
+        f"preference:{criterion.id}": ChoiceAnswer(choice="met"),
+        f"preference:{criterion.id}:evidence": ChoiceAnswer(choice="insufficient"),
+    }
+    with pytest.raises(ValueError):
+        decisions_adapter(FACTS, preferences, posting, spans).interpret(base)
+    supported = {
+        **base,
+        f"preference:{criterion.id}:evidence": ChoiceAnswer(choice="job:description"),
+    }
+    assessment = decisions_adapter(FACTS, preferences, posting, spans).interpret(supported)
+    validate(assessment, preferences, spans)
+
+
+def test_chat_model_mismatch_is_terminal(
+    transport: dict[str, Any],
+) -> None:
+    identifier = configuration()
+    transport["responses"] = [completion(model="example/other")]
+    with pytest.raises(OperationError) as raised:
+        run(identifier)
+    assert raised.value.code == "ai_model_mismatch"
+    assert len(transport["posts"]) == 1
+
+
+def test_decisions_protocol_restricted_to_matching(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    key = tmp_path / "key"
+    key.write_text("synthetic-secret-never-returned")
+    monkeypatch.setattr(get_settings(), "openrouter_key_file", key)
+    headers = auth(client)
+    headers = {**headers, "If-Match": '"0"'}
+    body = {"task": "profile_analysis", "config": {"model": "example/x", "protocol": "decisions"}}
+    assert client.patch("/api/v1/settings/ai", headers=headers, json=body).status_code == 422
+    allowed = {
+        "task": "job_matching",
+        "config": {"model": "typesafe/jev-1.13", "protocol": "decisions"},
+    }
+    assert client.patch("/api/v1/settings/ai", headers=headers, json=allowed).status_code == 200

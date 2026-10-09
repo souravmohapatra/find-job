@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 import time
 from collections.abc import Callable
 from datetime import timedelta
@@ -18,6 +19,14 @@ from sqlalchemy.orm import Session
 
 from app.ai.configuration import limits, set_validation
 from app.ai.contracts import TaskConfig, TaskKey
+from app.ai.decisions import (
+    DecisionsTask,
+    normalize,
+    parse_response,
+)
+from app.ai.decisions import (
+    request_body as decisions_request_body,
+)
 from app.ai.models import InferenceCall, TaskRevision
 from app.ai.run_ledger import BudgetRefused, RunLedger
 from app.config import get_settings
@@ -387,6 +396,15 @@ def finish(
                 setattr(row, field, value)
 
 
+def stored_protocol(config_id: UUID, task: TaskKey) -> str:
+    """The stored revision's wire protocol; unknown configurations keep the chat default."""
+    with Session(get_engine()) as db:
+        revision = db.get(TaskRevision, config_id)
+        if revision is None or revision.task != task:
+            return "chat"
+        return TaskConfig.model_validate(revision.config).protocol
+
+
 def settle_ledger(ledger: RunLedger | None, call_id: UUID, response: dict[str, Any] | None) -> None:
     """Mirror a finished call's provider-reported cost into the cumulative run ledger.
 
@@ -397,6 +415,189 @@ def settle_ledger(ledger: RunLedger | None, call_id: UUID, response: dict[str, A
         return
     usage = (response or {}).get("usage")
     ledger.settle(str(call_id), money(usage.get("cost")) if isinstance(usage, dict) else None)
+
+
+DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
+# Decisions responses may return a dated concrete version of the requested model
+# (for example typesafe/jev-1.13-20260917); the exact-prefix digit-suffix rule covers
+# only that documented form. No broad prefix acceptance.
+DECISIONS_VERSION_PATTERN = re.compile(r"^\d{8}$")
+
+
+def dispatch_decisions(
+    task: TaskKey,
+    config_id: UUID,
+    operation_id: UUID | None,
+    config: TaskConfig,
+    task_input: DecisionsTask,
+    prompt_version: str,
+    schema_version: str,
+) -> Any:
+    """Single-attempt Decisions dispatch through the shared reservation and ledger gates.
+
+    Typed-contract errors are terminal: the protocol has no chat-style repair, so a
+    failure retains the paid attempt and stops instead of re-sending.
+    """
+    assert config.model
+    bound = (
+        len(
+            json.dumps(
+                {"state": task_input.state, "questions": task_input.questions},
+                ensure_ascii=False,
+                default=str,
+            ).encode()
+        )
+        + 1024
+    )
+    if bound > config.input_tokens:
+        raise OperationError(
+            "ai_input_too_large",
+            "The complete state and questions exceed the configured input limit.",
+            blocked=True,
+        )
+    settings = get_settings()
+    ledger = RunLedger(settings.live_ledger_path) if settings.integration_mode == "live" else None
+    body = decisions_request_body(
+        config.model,
+        task_input.state,
+        task_input.questions,
+        {
+            # Documented Decisions ProviderPreferences only; chat-only fields such as
+            # require_parameters and endpoint "only" tags are not blindly sent.
+            "data_collection": "deny",
+            "zdr": config.zdr,
+            "allow_fallbacks": True,
+            "max_price": {
+                "prompt": float(config.prompt_price),
+                "completion": float(config.completion_price),
+                "request": float(config.request_price),
+            },
+        },
+    )
+    with client() as http:
+        call_id = reserve(config_id, task, config, operation_id, prompt_version, schema_version)
+        if ledger is not None:
+            try:
+                ledger.admit(str(call_id), estimate_bound(config))
+            except BudgetRefused as refused:
+                finish(
+                    call_id,
+                    state="failed",
+                    error_code=f"ai_budget_{refused.reason}",
+                    response={"usage": {"cost": 0}},
+                    cost_source="rejected",
+                )
+                raise OperationError(
+                    "ai_budget",
+                    "The cumulative live-validation budget cap is reached. Reconcile "
+                    "the run ledger before any further request.",
+                    blocked=True,
+                ) from refused
+        started = time.monotonic()
+        try:
+            # Absolute URL: joining "alpha/decisions" to the /api/v1/ base would
+            # target the wrong endpoint.
+            response = http.post(DECISIONS_URL, json=body, timeout=config.timeout_seconds)
+        except httpx.HTTPError as error:
+            settle_ledger(ledger, call_id, None)
+            finish(call_id, state="unknown", error_code="ai_transport")
+            raise OperationError(
+                "ai_transport",
+                "The request outcome and cost are uncertain. Its reservation is "
+                "retained; reconcile usage before retrying.",
+                blocked=True,
+            ) from error
+        latency = int((time.monotonic() - started) * 1000)
+        if response.status_code != 200:
+            failure = http_failure(response)
+            known_free = response.status_code in {400, 401, 402, 403, 404, 422, 429}
+            settle_ledger(ledger, call_id, {"usage": {"cost": 0}} if known_free else None)
+            finish(
+                call_id,
+                state="failed",
+                error_code=failure.code,
+                response={"usage": {"cost": 0}} if known_free else None,
+                cost_source="rejected",
+                latency=latency,
+            )
+            if response.status_code == 429:
+                with Session(get_engine()) as db, db.begin():
+                    row = db.get(TaskRevision, config_id, with_for_update=True)
+                    assert row
+                    row.cooldown_until = now() + timedelta(seconds=failure.retry_after or 60)
+            if failure.blocked:
+                set_validation(config_id, "blocked", failure.code)
+            raise failure
+        try:
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError
+        except ValueError as error:
+            settle_ledger(ledger, call_id, None)
+            finish(call_id, state="unknown", error_code="ai_response_invalid", latency=latency)
+            raise OperationError(
+                "ai_response_invalid",
+                "The provider response was unreadable; the billing reservation is retained.",
+                blocked=True,
+            ) from error
+        try:
+            parsed = parse_response(data)
+            normalize(task_input.questions, parsed)
+        except ValueError as error:
+            # A typed-contract error never receives a chat repair prompt.
+            settle_ledger(ledger, call_id, data)
+            finish(
+                call_id, state="invalid", error_code="ai_protocol", response=data, latency=latency
+            )
+            raise OperationError(
+                "ai_protocol",
+                "The Decisions response did not satisfy the typed question contract.",
+                blocked=True,
+            ) from error
+        returned = parsed.model
+        allowed_models = {
+            model.removesuffix(":free") for model in [config.model, *config.fallback_models]
+        }
+        allowed_models.update([config.model, *config.fallback_models])
+        if returned not in allowed_models and not any(
+            returned.startswith(f"{model}-")
+            and DECISIONS_VERSION_PATTERN.fullmatch(returned[len(model) + 1 :])
+            for model in allowed_models
+        ):
+            settle_ledger(ledger, call_id, data)
+            finish(
+                call_id,
+                state="invalid",
+                error_code="ai_model_mismatch",
+                response=data,
+                latency=latency,
+            )
+            raise OperationError(
+                "ai_model_mismatch",
+                "The provider returned an unrequested model. Review the model "
+                "configuration before retrying.",
+                blocked=True,
+            )
+        settle_ledger(ledger, call_id, data)
+        finish(call_id, state="completed", response=data, latency=latency)
+        if parsed.usage.cost is None:
+            raise OperationError(
+                "ai_cost_unknown",
+                "The provider omitted request cost. Reconcile usage before continuing.",
+                blocked=True,
+            )
+        try:
+            result = task_input.interpret(parsed.answers)
+        except ValueError as error:
+            finish(call_id, state="invalid", error_code="ai_schema", response=data, latency=latency)
+            raise OperationError(
+                "ai_schema",
+                "The decision outcome failed evidence validation. Review the task inputs.",
+                blocked=True,
+            ) from error
+        finish(call_id, state="succeeded", response=data, latency=latency)
+        set_validation(config_id, "validated")
+        return result
 
 
 def infer[T: BaseModel](
@@ -411,6 +612,7 @@ def infer[T: BaseModel](
     prompt_version: str = "v1",
     schema_version: str = "v1",
     validation_probe: bool = False,
+    decisions: "DecisionsTask | None" = None,
 ) -> T:
     if config_id is None:
         raise OperationError(
@@ -477,6 +679,29 @@ def infer[T: BaseModel](
         )
     # Cumulative cap across processes and restarts; active only for billable traffic.
     ledger = RunLedger(settings.live_ledger_path) if settings.integration_mode == "live" else None
+    if config.protocol == "decisions":
+        if task != "job_matching":
+            raise OperationError(
+                "ai_protocol",
+                "The Decisions protocol is supported only for job matching.",
+                blocked=True,
+            )
+        if decisions is None:
+            raise OperationError(
+                "ai_protocol",
+                "This revision uses the Decisions protocol and requires typed questions.",
+                blocked=True,
+            )
+        result: T = dispatch_decisions(
+            task, config_id, operation_id, config, decisions, prompt_version, schema_version
+        )
+        return result
+    if decisions is not None:
+        raise OperationError(
+            "ai_protocol",
+            "This revision uses the chat protocol; Decisions input is not accepted.",
+            blocked=True,
+        )
     with client() as http:
         try:
             tags = endpoint_tags(http, config)
@@ -599,13 +824,27 @@ def infer[T: BaseModel](
                     "The provider omitted request cost. Reconcile usage before continuing.",
                     blocked=True,
                 )
+            allowed_models = {
+                model.removesuffix(":free") for model in [config.model, *config.fallback_models]
+            }
+            allowed_models.update([config.model, *config.fallback_models])
+            if data.get("model") not in allowed_models:
+                # Model mismatch is not a repairable syntax error: reject visibly and
+                # retain billing instead of re-sending an unrequested-model request.
+                finish(
+                    call_id,
+                    state="invalid",
+                    error_code="ai_model_mismatch",
+                    response=data,
+                    latency=latency,
+                )
+                raise OperationError(
+                    "ai_model_mismatch",
+                    "The provider returned an unrequested model. Review the model "
+                    "configuration before retrying.",
+                    blocked=True,
+                )
             try:
-                allowed_models = {
-                    model.removesuffix(":free") for model in [config.model, *config.fallback_models]
-                }
-                allowed_models.update([config.model, *config.fallback_models])
-                if data.get("model") not in allowed_models:
-                    raise ValueError("Unexpected model")
                 choice = data["choices"][0]
                 if choice.get("finish_reason") != "stop":
                     raise ValueError("Incomplete response")

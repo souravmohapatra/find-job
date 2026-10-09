@@ -15,6 +15,10 @@ TASKS: tuple[TaskKey, ...] = ("profile_analysis", "job_extraction", "job_matchin
 
 class TaskConfig(Contract):
     model: str | None = Field(default=None, max_length=200)
+    # Wire protocol for this revision. Older revisions without the field keep their
+    # historical chat meaning through this default; decisions is the native typed
+    # Decisions endpoint. Enforced to "job_matching" only at save and dispatch time.
+    protocol: Literal["chat", "decisions"] = "chat"
     fallback_models: list[str] = Field(default_factory=list, max_length=3)
     providers: list[str] = Field(default_factory=list, max_length=10)
     zdr: bool = False

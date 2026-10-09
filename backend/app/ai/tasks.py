@@ -2,17 +2,25 @@ from typing import Literal
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
 from app.ai import provider
 from app.ai.configuration import set_validation
 from app.ai.contracts import TaskKey
+from app.ai.decisions import (
+    ChoiceAnswer,
+    DecisionsQuestion,
+    DecisionsTask,
+    NoulAnswer,
+    ScoreAnswer,
+)
 from app.ai.models import InferenceCall
-from app.ai.provider import http_failure, infer, money
+from app.ai.provider import http_failure, infer, money, stored_protocol
 from app.config import get_settings
 from app.db import get_engine
 from app.profile_models import now
 from app.services.operations import OperationError
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
 
 
 class Probe(BaseModel):
@@ -23,6 +31,30 @@ class Probe(BaseModel):
 def validate_task(task: TaskKey, config_id: UUID, operation_id: UUID) -> None:
     if get_settings().integration_mode == "mock":
         set_validation(config_id, "mock_only")
+        return
+    if stored_protocol(config_id, task) == "decisions":
+        infer(
+            task,
+            config_id,
+            operation_id,
+            "",
+            {},
+            Probe,
+            prompt_version="probe-v1",
+            schema_version="probe-v1",
+            validation_probe=True,
+            decisions=DecisionsTask(
+                state={"test": "synthetic"},
+                questions={
+                    "probe": DecisionsQuestion(
+                        type="choice",
+                        instructions=('Synthetic connectivity probe. Confirm by selecting "ok".'),
+                        criteria={"ok": "Always select this.", "error": "Never select this."},
+                    )
+                },
+                interpret=_probe_answer,
+            ),
+        )
         return
     infer(
         task,
@@ -35,6 +67,14 @@ def validate_task(task: TaskKey, config_id: UUID, operation_id: UUID) -> None:
         schema_version="probe-v1",
         validation_probe=True,
     )
+
+
+def _probe_answer(answers: "dict[str, ChoiceAnswer | NoulAnswer | ScoreAnswer]") -> "Probe":
+    answer = answers["probe"]
+    assert isinstance(answer, ChoiceAnswer)
+    if answer.choice != "ok":
+        raise ValueError("probe answer must be ok")
+    return Probe(status="ok")
 
 
 def reconcile_call(call_id: UUID) -> None:
@@ -78,4 +118,12 @@ def reconcile_call(call_id: UUID) -> None:
             row.reported_usd = cost
             row.cost_source = "provider"
             row.accounted_at = now()
+            settings = get_settings()
+            if settings.integration_mode == "live":
+                from pathlib import Path
+
+                from app.ai.run_ledger import RunLedger
+
+                # Release the cumulative hold now that provider billing is confirmed.
+                RunLedger(Path(settings.live_ledger_path)).settle(str(call_id), cost)
             row.state = "reconciled"

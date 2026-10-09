@@ -41,6 +41,22 @@ Gate A status: the offline-refusal, disposable-state, process-settings and persi
 
 Next: Phase B — implement the Jev Decisions adapter at the task boundary with deterministic MockTransport coverage for both adapters per the Phase B table, then Phase C live probes.
 
+## Phase B decisions adapter checkpoint — 2026-10-09
+
+Implemented the adapter split at the task boundary:
+
+- `backend/app/ai/decisions.py`: the Decisions wire protocol (typed choice/noul/score questions and answers), parsed fail-closed. Booleans and non-finite values are rejected before pydantic can coerce `True` to `1.0` (verified coercion happens in lax mode). `normalize` checks answer/question type match, missing and extra answer keys, unknown choice values, exact probability-key sets, range checks and the documented `PROBABILITY_TOLERANCE` (0.02) on probability sums; bad probabilities are never renormalized. Missing usage cost is unknown, never zero.
+- `TaskConfig.protocol: Literal["chat", "decisions"] = "chat"`: revisions saved before this field keep their historical chat meaning through the default. Save-time guard (422 via `problem`) and dispatch-time guard restrict `decisions` to `job_matching`.
+- `provider.dispatch_decisions`: single-attempt dispatch to the absolute URL `https://openrouter.ai/api/alpha/decisions` (joining `alpha/decisions` onto the `/api/v1/` base would target the wrong endpoint — flagged in the plan and asserted in tests). Sends only documented Decisions fields (`data_collection=deny`, `zdr`, `allow_fallbacks`, `max_price`); chat-only `require_parameters`/endpoint `only` tags are not blindly sent. Shares `reserve`, `estimate_bound`, the run-ledger admission gate, `finish` and settlement with the chat path. Typed-contract errors, unknown returned models and transport failures are terminal: no chat repair re-send, paid attempt retained, missing cost stays held. The returned dated version form (`typesafe/jev-1.13-20260917`) is accepted by an exact-prefix digit-suffix rule only; no broad prefix acceptance.
+- Chat path defect fixed per the Phase B row "model mismatch is not a repairable syntax error": an unrequested returned model now terminates with `ai_model_mismatch` instead of consuming a repair re-send. No test had pinned the old behavior.
+- `matching.decisions_adapter` (small adapter): typed questions for primary function (choice over job spans with `insufficient`), relation, a 4-band relevance score, plausible connection (noul), and per-criterion outcome plus supporting-span questions with explicit insufficient options. The interpreter cites exact span texts from state only (no model-generated quotes), fails closed when a known outcome lacks selected support, and maps insufficient evidence to `unclear`/`None`/`unknown`. `validate_task` dispatches a decisions probe (typed "ok" question) for decisions-protocol revisions; `reconcile_call` now releases the run-ledger hold when provider billing is confirmed.
+
+Checks: full backend suite 306 passed, exit 0, against the disposable test DB (10 new Phase B tests: probe contract/versioned-model/ledger settlement, six terminal typed-contract scenarios with no repair re-sends, unknown-model billing retention, missing-cost hold, transport-failure no-duplicate, 429 cooldown, adapter interpretation incl. insufficient path and unsupported preference outcome, chat mismatch terminality, protocol save restriction). `ruff check`, `ruff format --check`, strict `mypy` pass on all touched files. No live request: inference attempts 0, spend US$0, held US$0 (all HTTP is MockTransport).
+
+Gate B status: mocked tests pass for both transports and the shared budget/state logic; the small matching adapter and probe dispatch exist; production code is not bypassed. Not claimed: prompt-quality (Phase D/E) and live behaviour (Phase C).
+
+Next: Phase C — bounded live connectivity and schema checks through the launcher (at most 6 successful probes, up to 4 further attempts for diagnosis, inside the cumulative 60/US$1 cap), including the Jev `data_collection=deny` enforcement probe.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 
