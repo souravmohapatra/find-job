@@ -71,6 +71,8 @@ Advisor-review hardening batch (same day, from the full advisor findings; commit
 
 Owner decision (2026-10-09): live Decisions (Jev) dispatch is unblocked only after the OpenRouter key limit is lowered to at most US$1 — a provider-enforced cap inside the approved ceiling. The owner performs this in the OpenRouter dashboard (never through the API, per project rules); the launcher's metadata check then requires `limit <= 1.0` before `decisions_live_enabled` may be set. Phase C order unchanged: Luna probes first, then the single Jev `data_collection=deny` probe. Until the lowered limit is verified, Jev stays `ai_decisions_blocked`.
 
+Advisory fix (same day): the backstop check now requires finite usage/limit (`NaN` previously slipped through both comparisons), rejects resetting limits (`limit_reset`, e.g. `"monthly"` — a resetting allowance cannot enforce the cumulative cap), and rejects exhausted or non-finite `limit_remaining` (both documented in the OpenAPI key schema). A real diagnostics log now exists: `provision_database` failures write the sanitized psql stderr to ignored `.data/live_run_<run-id>_diagnostics.log` instead of claiming a nonexistent log. New `backend/tests/test_live_launcher.py` (9 tests, all offline via faked `httpx.get`, NaN injected as raw wire bytes): valid static limit passes; oversized/unset/NaN-limit/NaN-usage/resetting/exhausted/NaN-remaining all rejected; the metadata attempt counter increments even on failure. Full suite: 320 passed, exit 0; ruff clean. Still awaiting the owner's dashboard action (key limit ≤ US$1) before Phase C.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 

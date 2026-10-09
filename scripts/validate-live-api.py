@@ -102,9 +102,15 @@ def provision_database(run_id: str) -> None:
     )
     if result.returncode != 0:
         if "already exists" not in result.stderr:
+            log = DATA_DIR / f"live_run_{run_id}_diagnostics.log"
+            descriptor = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "w") as stream:
+                # The command carries no credentials (the container reads its own
+                # secret file); the raw stderr is preserved for diagnosis.
+                stream.write(result.stderr)
             raise fail(
                 f"creating the disposable database failed (exit {result.returncode});"
-                " original error preserved in the diagnostic log, not printed here"
+                f" stderr saved to {log.relative_to(ROOT)}"
             )
         print(f"database exists from an interrupted run; reusing: {name}")
     else:
@@ -219,10 +225,22 @@ def remove_key_bridge(run_dir: Path) -> None:
 
 
 def check_spending_backstop(metadata_state: dict[str, int]) -> None:
-    """One authenticated metadata GET; prints coarse limits only, never key material."""
+    """One authenticated metadata GET; prints coarse limits only, never key material.
+
+    Establishes a non-resetting, non-exhausted, enforceable provider-side allowance
+    within the approved US$1 ceiling; anything else blocks live preparation.
+    """
     import httpx
+    import math
 
     from app.config import get_settings
+
+    def finite(value: object) -> bool:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
 
     key = get_settings().openrouter_key_file.read_text().strip()
     response = httpx.get(
@@ -236,14 +254,23 @@ def check_spending_backstop(metadata_state: dict[str, int]) -> None:
         raise fail(f"key metadata check returned HTTP {response.status_code}; diagnose offline")
     data = response.json().get("data", {})
     usage, limit = data.get("usage"), data.get("limit")
-    if not isinstance(usage, (int, float)) or isinstance(usage, bool) or usage < 0:
+    if not finite(usage) or usage < 0:
         raise fail("key metadata has no usable usage figure; diagnose offline")
-    if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit <= 0:
+    if not finite(limit) or limit <= 0:
         raise fail(
             "the key has no positive provider-side spending backstop; the cumulative"
             " US$1 cap cannot be enforced provider-side. Set a key limit at the"
             " provider (dashboard, not API) at or below the remaining allowance first."
         )
+    reset = data.get("limit_reset")
+    if reset:
+        raise fail(
+            f"the key limit resets ({reset!r}); a resetting allowance cannot enforce"
+            " the cumulative US$1 cap. Remove the reset or use a static key limit."
+        )
+    remaining = data.get("limit_remaining")
+    if remaining is not None and (not finite(remaining) or remaining <= 0):
+        raise fail("the provider-side backstop is exhausted or unusable; diagnose offline")
     print(f"key backstop: usage={usage} limit={limit}")
     if float(limit) > 1.0:
         raise fail(
