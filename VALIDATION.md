@@ -261,3 +261,9 @@ First live OpenRouter traffic, run through `scripts/validate-live-api.py --execu
 Also validated live: the capability preflight defect fix (tiered `overrides`/`discount` pricing had blocked all Luna endpoints; fixed and regression-tested offline), the `--execute-live` key-bridge lifecycle (created 0600 before first settings use, removed on shutdown, no leftovers), and Gate A offline refusals in the same run.
 
 Limits: one probe per protocol, synthetic payloads only. This does not establish deny enforcement beyond request acceptance (not externally observable), matched-task quality, prompt usefulness, fetcher isolation, digest delivery, or deployment acceptance. No retries were sent; no live request exceeded the advisory cap.
+
+## Progress/approach review checks — 2026-10-09
+
+Reviewed baseline `594b1ab` plus the pre-existing uncommitted DNS rule/test edits. Fresh `python3 scripts/test_fetch_rules.py` exited 1: six tests run, four failures. Install/reinstall fail with `BLOCKED: expected 12 DOCKER-USER and 6 INPUT managed rules, found 8 6`, followed by post-install rollback. The drift assertion fails because installation left zero rules. This is mocked command execution in temporary files, not a host-firewall or Docker validation. No fix was applied during this review.
+
+Source inspection confirms the harness has no pre-rule DNS baseline, the Jev conversion hardcodes unknown domain/important uncertainty, and the mocked insert-failure case fails on its first insertion rather than testing cleanup of a partial installation. Findings and acceptance limits are recorded in REVIEW.md. Historical backend/browser/live passes were read, not reproduced; no secret/ledger read, dependency operation, live request or privileged runtime check occurred.

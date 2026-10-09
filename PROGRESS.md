@@ -2,7 +2,19 @@
 
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
-Updated: 2026-10-09. Local live API validation canceled by the owner; continuation moves to the deployment host.
+Updated: 2026-10-09. Progress/approach review completed; deployment and matching acceptance remain open. Original development-network live validation remains canceled.
+
+## Progress/approach review checkpoint — 2026-10-09 (completed)
+
+Owner requested reviewing progress, approach and attempts and recording the result in REVIEW.md. Inspected planning/decision/validation records, recent Git history, the existing review, the uncommitted firewall/test diff, the shared installer/harness, fetcher DNS precheck and Decisions matching conversion. Existing uncommitted source edits are preserved; this assignment does not resume implementation, firewall installation or paid validation. No `.agent` directory exists; memory initialization remains optional pending owner agreement.
+
+Fresh offline check: `python3 scripts/test_fetch_rules.py` exited 1, six tests run, four failures. First install/reinstall fail with `BLOCKED: expected 12 DOCKER-USER and 6 INPUT managed rules, found 8 6`; post-install verification rolls back. The drift test then sees zero rules. This confirms a regression in the uncommitted DNS change, separate from the owner-executed harness DNS failure already recorded below. No host firewall or Docker resources were touched by this mocked test.
+
+Recorded the updated review in REVIEW.md, retaining the 2026-10-08 review as historical context. Findings: the uncommitted installer count regression; missing DNS baseline and speculative exception; incomplete Jev domain/uncertainty/evidence semantics; stale current-state/budget guidance; unfinished acceptance gates; and insufficient partial-install failure coverage. The review distinguishes historical passes from the one fresh offline test result and proposes a narrow continuation without changing requirements or implementing fixes.
+
+Current execution summary: later deployment-host checkpoints report successful public-registry dependency installs, frontend build/image smoke checks, normal-bridge disposable PostgreSQL access and 324 backend tests passing. Two small live synthetic probes succeeded; last recorded accounting is 2 attempts, US$0.000020042 known, nothing held (private ledger not reread in this review). Full schema/semantic/provider orchestration acceptance, fetching DNS/isolation, real source coverage, private deployed access, scheduled device delivery and deployed recovery/timer checks remain unfinished. Older zero-call/private-registry summaries below are superseded for deployment-host execution. Budget guidance conflicts with the later recorded advisory-cap decision; reconcile with the owner-confirmed requirement and durable accounting before any further paid batch. This review authorizes none.
+
+Next authorized work remains a separate assignment: preserve/revert the speculative DNS edits as directed, pass the mocked installer checks, establish pre/post-rule DNS baselines, then complete the real isolation and core-journey gates. No implementation or privileged run was started by this review. Documentation checks passed for all three review-related files: local links, whitespace, final newlines and balanced fences; `git diff --check` passed. Saving only REVIEW.md, PROGRESS.md and VALIDATION.md in a local documentation commit; no push. Existing source/test edits remain uncommitted. No `.agent` memory was created without agreement.
 
 ## Deployment-host execution checkpoint — 2026-10-09
 
@@ -127,7 +139,7 @@ History note: five earlier commits (`c3eacc7`, `00b4894`, `f8931ad`, `b732d4c`, 
 
 
 
-## Current state
+## Historical development-network handoff state (superseded by deployment-host checkpoints)
 
 The owner reports that OpenRouter verification cannot be performed on this development network and has canceled the local live plan. Do not resume metadata probes, paid requests or offline implementation under that canceled assignment. Continue on the intended host using [FINISH_DEVELOPMENT_AND_VALIDATE.md](FINISH_DEVELOPMENT_AND_VALIDATE.md), section 8 and [DEPLOYMENT_API_VALIDATION.md](DEPLOYMENT_API_VALIDATION.md), when assigned there.
 
