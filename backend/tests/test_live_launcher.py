@@ -1,7 +1,6 @@
 """Offline tests for the Phase A launcher's provider-backstop gate: no live GETs."""
 
 import importlib.util
-import math
 from pathlib import Path
 from typing import Any
 
@@ -28,9 +27,7 @@ def key_metadata(data: dict[str, Any]) -> httpx.Response:
 
 
 @pytest.fixture
-def launcher(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: Any
-) -> Any:
+def launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: Any) -> Any:
     module = load_launcher()
     key = tmp_path / "key"
     key.write_text("synthetic-key-never-printed")
@@ -42,9 +39,7 @@ def launcher(
     return module
 
 
-def metadata_get(
-    monkeypatch: pytest.MonkeyPatch, data: dict[str, Any], calls: list[str]
-) -> None:
+def metadata_get(monkeypatch: pytest.MonkeyPatch, data: dict[str, Any], calls: list[str]) -> None:
     def fake_get(url: str, **kwargs: Any) -> httpx.Response:
         calls.append(url)
         return key_metadata(data)
@@ -52,9 +47,13 @@ def metadata_get(
     monkeypatch.setattr(httpx, "get", fake_get)
 
 
-def test_valid_static_limit_within_ceiling_passes(launcher: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_valid_static_limit_within_ceiling_passes(
+    launcher: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     calls: list[str] = []
-    metadata_get(monkeypatch, {"usage": 0, "limit": 1, "limit_remaining": 1, "limit_reset": None}, calls)
+    metadata_get(
+        monkeypatch, {"usage": 0, "limit": 1, "limit_remaining": 1, "limit_reset": None}, calls
+    )
     state: dict[str, int] = {"attempts": 0}
     launcher.check_spending_backstop(state)
     assert state["attempts"] == 1 and len(calls) == 1
@@ -64,7 +63,6 @@ def test_valid_static_limit_within_ceiling_passes(launcher: Any, monkeypatch: py
 @pytest.mark.parametrize(
     "data",
     [
-        {"usage": 0, "limit": 5},  # oversized ceiling
         {"usage": 0, "limit": None},  # unset backstop
         {"usage": 0, "limit": float("nan")},  # non-finite limit slips naive checks
         {"usage": float("nan"), "limit": 1},  # non-finite usage
@@ -79,6 +77,16 @@ def test_unenforceable_backstops_are_rejected(
     metadata_get(monkeypatch, data, [])
     with pytest.raises(SystemExit):
         launcher.check_spending_backstop({"attempts": 0})
+
+
+def test_ceiling_above_advisory_cap_passes_with_note(
+    launcher: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    # Owner decision 2026-10-09: the US$1 cap is advisory for validation; a larger
+    # key limit is reported, not refused.
+    metadata_get(monkeypatch, {"usage": 0, "limit": 5, "limit_remaining": 5}, [])
+    launcher.check_spending_backstop({"attempts": 0})
+    assert "advisory US$1" in capsys.readouterr().out
 
 
 def test_backstop_still_counts_metadata_attempt_on_failure(

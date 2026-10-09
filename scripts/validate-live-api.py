@@ -6,9 +6,10 @@ dedicated disposable database. No external request is made.
 
 --execute-live additionally provisions this run's temporary owner-only key bridge
 under the ignored .secrets/ directory, verifies key availability through the
-application's own settings path and checks the key's spending backstop with one
-authenticated metadata GET. Billable probes belong to the later phases and are not
-implemented in this launcher yet.
+application's own settings path, checks the key's spending backstop with one
+authenticated metadata GET and runs the Phase C probes (one Luna structured-output
+probe, then the Jev Decisions deny probe) on synthetic payloads, stopping at the
+first unresolved failure.
 
 The script never prints the key, the database URL or other secret material, never
 executes shell text from .env, and removes only this run's temporary secret on
@@ -230,16 +231,15 @@ def check_spending_backstop(metadata_state: dict[str, int]) -> None:
     Establishes a non-resetting, non-exhausted, enforceable provider-side allowance
     within the approved US$1 ceiling; anything else blocks live preparation.
     """
-    import httpx
     import math
+
+    import httpx
 
     from app.config import get_settings
 
     def finite(value: object) -> bool:
         return (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(value)
+            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
         )
 
     key = get_settings().openrouter_key_file.read_text().strip()
@@ -273,10 +273,14 @@ def check_spending_backstop(metadata_state: dict[str, int]) -> None:
         raise fail("the provider-side backstop is exhausted or unusable; diagnose offline")
     print(f"key backstop: usage={usage} limit={limit}")
     if float(limit) > 1.0:
-        raise fail(
-            f"the provider-side key limit (${limit}) exceeds the approved US$1"
-            " ceiling. Lower the key limit in the OpenRouter dashboard (owner"
-            " action, never via the API) and rerun."
+        # Owner decision 2026-10-09: the US$1 ceiling is advisory for validation;
+        # the key limit is an additional provider backstop (requests are charged on
+        # completion from estimated preflight costs; single-request enforcement is
+        # unverified). Exceeding it is reported, not refused.
+        print(
+            f"NOTE: the provider-side key limit (${limit}) exceeds the advisory US$1"
+            " validation cap. The run ledger remains the pre-dispatch admission gate;"
+            " report any charge above the cap to the owner."
         )
 
 
@@ -284,6 +288,80 @@ def save_run_metadata(path: Path, metadata: dict[str, object]) -> None:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w") as stream:
         json.dump(metadata, stream, indent=2, sort_keys=True)
+
+
+def run_probes() -> None:
+    """Phase C: one tiny Luna structured-output probe, then the Jev deny probe.
+
+    Each probe runs through the real configured adapter, ledger admission and
+    accounting on synthetic payloads. Stop on the first unresolved failure and
+    diagnose offline before another attempt; never send a second probe after a
+    failure in the same run.
+    """
+    from sqlalchemy import func, select
+    from sqlalchemy.orm import Session
+
+    from app.ai.configuration import latest
+    from app.ai.contracts import TaskConfig
+    from app.ai.models import InferenceCall, TaskRevision
+    from app.ai.tasks import validate_task
+    from app.db import get_engine
+    from app.profile_models import Operation
+    from app.services.operations import OperationError
+
+    with Session(get_engine()) as db:
+        pending = (
+            db.scalar(
+                select(func.count()).select_from(Operation).where(Operation.state == "queued")
+            )
+            or 0
+        )
+    if pending:
+        raise fail(f"{pending} queued operations exist; inspect them before probing")
+    # Synthetic bounded revisions: small token ceilings keep reservations conservative.
+    configs = [
+        (
+            "profile_analysis",
+            TaskConfig(model="openai/gpt-6-luna", input_tokens=4000, output_tokens=256),
+        ),
+        (
+            "job_matching",
+            TaskConfig(
+                model="typesafe/jev-1.13",
+                protocol="decisions",
+                input_tokens=4000,
+                output_tokens=256,
+            ),
+        ),
+    ]
+    for task, config in configs:
+        with Session(get_engine()) as db, db.begin():
+            previous = latest(db, task)
+            row = TaskRevision(
+                task=task,
+                revision=(previous.revision + 1) if previous else 1,
+                config=config.model_dump(mode="json"),
+                validation_state="unvalidated",
+            )
+            db.add(row)
+            db.flush()
+            config_id = row.id
+        try:
+            validate_task(task, config_id, None)
+        except OperationError as error:
+            print(f"probe {task} FAILED: {error.code}", file=sys.stderr)
+            raise fail(
+                f"probe {task} failed ({error.code}); diagnose offline before another attempt"
+            ) from error
+        with Session(get_engine()) as db:
+            call = db.scalar(
+                select(InferenceCall).order_by(InferenceCall.created_at.desc()).limit(1)
+            )
+            print(
+                f"probe {task}: state={call.state} cost=${call.reported_usd}"
+                f" latency={call.latency_ms}ms model={call.returned_model}"
+                f" generation={call.generation_id}"
+            )
 
 
 def main() -> int:
@@ -298,10 +376,6 @@ def main() -> int:
         print("BLOCKED: run id must be lowercase alphanumeric/underscore", file=sys.stderr)
         return 2
 
-    ensure_ignored(".env")
-    ensure_ignored(".data")
-    ensure_ignored(".secrets")
-
     # Process configuration precedes every application import (Phase A step 5).
     os.environ["JOBFINDER_ENVIRONMENT"] = "development"
     os.environ["JOBFINDER_INTEGRATION_MODE"] = "live"
@@ -313,6 +387,14 @@ def main() -> int:
     DATA_DIR.mkdir(mode=0o700, exist_ok=True)
     os.environ["JOBFINDER_LIVE_LEDGER_PATH"] = str(DATA_DIR / "live_run_ledger.json")
     os.environ["JOBFINDER_DOCUMENT_DIR"] = str(DATA_DIR / f"live_run_{run_id}" / "documents")
+    if args.execute_live:
+        # Owner decision 2026-10-09: the advisory US$1 cap governs admission; the Jev
+        # probe proceeds with full-remaining reservation and the key's backstop.
+        os.environ["JOBFINDER_DECISIONS_LIVE_ENABLED"] = "true"
+
+    ensure_ignored(".env")
+    ensure_ignored(".data")
+    ensure_ignored(".secrets")
 
     sys.path.insert(0, str(ROOT / "backend"))
 
@@ -400,19 +482,20 @@ def main() -> int:
             check_spending_backstop(metadata_state)
             run_metadata["bridge"] = str(bridge_dir)
             run_metadata["metadata_attempts"] = metadata_state["attempts"]
+            run_probes()
         save_run_metadata(DATA_DIR / f"live_run_{run_id}.json", run_metadata)
         print(f"run metadata saved: .data/live_run_{run_id}.json (no secrets)")
 
         if not args.execute_live:
             print(
-                "Phase A offline preparation complete. Billable probes require Phase B"
-                " mocked-transport coverage first; rerun with --execute-live only for"
-                " key-bridge preparation and the metadata backstop check."
+                "Phase A offline preparation complete. Rerun with --execute-live for"
+                " key-bridge preparation, the metadata backstop check and the Phase C"
+                " probes (Luna, then Jev)."
             )
         else:
             print(
-                "Phase A live preparation complete. Billable probes are not implemented"
-                " in this launcher batch yet; the bridge is removed on shutdown."
+                "Phase C probes complete. Reconcile the run ledger summary above;"
+                " the bridge is removed on shutdown."
             )
         return 0
     finally:
