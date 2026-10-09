@@ -2,7 +2,37 @@
 
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
-Updated: 2026-10-09. Authoritative current state reconciled post-review; Jev Phase D matching adapter completed; installer and harness fixed; deployment and matching acceptance remain open.
+Updated: 2026-10-09. Runtime blocker identified: Snap Docker NoNewPrivs EPERM; fetch isolation DNS blocker and matching acceptance remain open.
+
+## Runtime blocker: Snap Docker NoNewPrivs EPERM — 2026-10-09
+
+A runtime blocker was observed on this host during preflight and container checks: any container executed with `--security-opt no-new-privileges:true` (or Compose `security_opt: [no-new-privileges:true]`) fails during `execve` with exit status 255 and `operation not permitted` (`EPERM`).
+
+- **Exact observations and commands:**
+  - Failing: `docker run --rm --security-opt no-new-privileges:true alpine:latest echo OK` -> `exec /bin/echo: operation not permitted` (exit status 255).
+  - Control: `docker run --rm alpine:latest echo OK` -> `OK` (exit status 0).
+  - Compose service test with `security_opt: [no-new-privileges:true]` -> `exec /bin/echo: operation not permitted` (exit status 255).
+  - Control without `security_opt` -> `OK` (exit status 0).
+  - Tested across multiple container images (`ubuntu/squid`, `alpine`) and execution contexts (user `13:13`, user `0:0`, seccomp unconfined, AppArmor unconfined): all fail identically with `EPERM` when `no-new-privileges` is enabled.
+  - Host daemon environment: Canonical Snap package (`snap list docker`: `docker 29.8.0`, rev 3613, overlay2 storage path `/var/snap/docker/common/var-lib-docker/...`).
+
+- **Suspected cause (labeled unconfirmed until kernel audit evidence):**
+  - Under Ubuntu's Snap confinement (`snap.docker.dockerd`), setting `PR_SET_NO_NEW_PRIVS` appears to trigger AppArmor denial of domain transitions on `execve` into container execution profiles, returning `EPERM`. This is a suspected cause; kernel audit records are required to confirm.
+
+- **Action and boundaries:**
+  - Runtime flags (`security_opt: [no-new-privileges:true]`) in `compose.yaml` and `scripts/check-proxy.py` are PRESERVED and not weakened or removed.
+  - Requested from owner: inspect kernel audit/AppArmor log records for the exact denial:
+    `sudo dmesg -T | grep -E "apparmor|audit|DENIED" | tail -30`
+
+## Follow-up review checkpoint — 2026-10-09 (completed; no commit requested)
+
+Owner requested reviewing the latest findings/blocker/mistakes, adding the result to REVIEW.md without committing, and identifying owner inputs needed to unblock the agent. Baseline is `4959867`; worktree was clean at intake. Fresh `python3 scripts/test_fetch_rules.py`: 7 passed, exit 0, 2.187s. `bash -n deploy/fetch-control-rules.sh scripts/test-fetch-control-harness.sh`: exit 0. These checks do not exercise host rules or Docker networking.
+
+Inspected the latest DNS diagnosis and matching implementation. Recorded DNS evidence now separates internal service discovery from external forwarding and locates failure before firewall rules; no restricted resolver fix or real isolation acceptance is demonstrated yet. Fresh isolated-source self-checks reproduced two remaining matching concerns: evidence after the six 500-character chunks is silently absent from candidate choices, and a known focus-domain conflict with insufficient support is downgraded to a successful unknown/Possible result. Self-checks used synthetic inputs, source definitions/domain contracts only and no provider import, database, credentials, network or state writes.
+
+Added a dated follow-up to REVIEW.md, retaining earlier reviews as historical. It records resolved installer/partial-rollback findings, the narrowed DNS blocker, candidate truncation, unsupported-domain normalization, mechanical score/connection evidence and limits of a green baseline-preservation harness. It also identifies remaining stale active guidance and separates offline adapter implementation from the still-open live Phase D gate. No new candidate/provider inputs are needed for DNS; the agent must design/prove a restricted path, with owner involvement only for exact privileged execution or new scoped host changes not already authorized. A suggested continuation instruction is included in the review.
+
+Next implementation action, when assigned: prepare the smallest complete restricted DNS fix and rollback, test on disposable resources, then complete actual isolation acceptance while production fetching stays disabled. Source was left unchanged; no paid call, privileged runtime check or Git commit occurred. Documentation links, whitespace, balanced fences and final newlines were checked for REVIEW.md, PROGRESS.md and VALIDATION.md; `git diff --check` passed. `.agent` remains absent and was not created without agreement.
 
 ## Authoritative current state — 2026-10-09 (post-review resolution and Phase D completion)
 

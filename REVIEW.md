@@ -1,5 +1,82 @@
 # Progress, approach and attempts review
 
+## Follow-up review — 2026-10-09, baseline `4959867`
+
+The latest changes make useful progress: the speculative DNS exceptions are gone, the mocked installer regression is fixed, partial-install rollback is exercised, and the matching adapter now evaluates domain fit and uncertainty. The DNS blocker remains open. Its cause is better understood, but no restricted resolver path has been implemented and demonstrated. The project is still awaiting real collection, matching and deployed-digest acceptance.
+
+This follow-up was requested without a commit. It inspects the latest source and records fresh offline checks; it does not install rules, change topology, read secrets, make provider calls or reproduce the host DNS experiments. Earlier reviews below are preserved as historical evidence and must not be treated as current findings without the status updates here.
+
+### Status of the earlier findings
+
+| Earlier finding | Current status and evidence |
+| --- | --- |
+| 1. Installer count regression | Resolved in the current source. The rule set and expectations are back to `8 2`. Fresh `python3 scripts/test_fetch_rules.py`: all 7 tests pass, exit 0, 2.187s. This proves mocked installer behavior, not host enforcement. |
+| 2. Speculative DNS attribution | Attribution has improved. PROGRESS.md and VALIDATION.md report external DNS returning SERVFAIL on an internal-only network before rules, while internal service-name lookup works; ordinary and dual-homed non-internal bridge cases resolve external names. The resolver path needed by the application is still unresolved. |
+| 3. Incomplete Jev conversion | Substantially improved offline: five-anchor scoring, exact quotation candidates, dynamic focus-domain/uncertainty judgments, comparability and separate sufficiency are present. The recorded 329-test backend pass was not rerun here. Two fresh counterexamples below mean this finding is only partially resolved; the live Phase D gate is also still open. |
+| 4. Conflicting current-state records | Improved: a top-level authoritative snapshot and matching budget statements now exist in the decision register and API companion. README.md still describes private-registry lock migration as pending, and AGENTS.md still states the original cumulative ceiling while later records describe an advisory dollar cap. Reconciliation is not complete across all active guidance. No changed spending authorization is inferred by this review. |
+| 5. Unfinished gates | Explicitly acknowledged as open. That resolves the reporting concern, not the actual schema, semantic, isolation, device-delivery or recovery gates. Calling the adapter “Phase D completed” should mean offline implementation only, because Gate D includes a useful live assessment. |
+| 6. Partial-install failure coverage | Improved and independently rerun: the fake fails on the fifth insert after four successful inserts, then checks cleanup. The harness now preserves more diagnostics and checks container/host-listener health, but those checks do not yet make a successful run proof that fetching works. |
+
+### Current blocker and its boundaries
+
+The fetcher is attached to `fetch_control` and `fetch`, both configured as internal networks. Its `resolve_public()` performs local DNS resolution and rejects non-global addresses before sending a request through Squid. The latest recorded host experiments show public-name forwarding unavailable through Docker's embedded resolver on the tested internal-only topology. As a result, normal public-site requests encounter `source_dns` before the proxy can fetch them.
+
+This is an application/topology incompatibility to resolve, rather than missing candidate data, provider credentials or model choices. It is not evidence that the old TLS/dependency/VPN problem has returned. The recorded behavior applies to the tested daemon/topologies; this review does not independently prove a universal Docker behavior or the cited Moby source attribution.
+
+The speculative INPUT exceptions aimed at `127.0.0.11` have correctly been removed. Retrying the unchanged topology or allowing arbitrary port-53 traffic would not constitute a demonstrated fix.
+
+The next implementation task is to select one restricted DNS path and prove both successful public resolution and retained isolation. The agent should compare the smallest feasible choices using the existing Squid boundary:
+
+- A carefully restricted non-internal fetch bridge may restore embedded forwarding, but the current installer explicitly requires both networks to be internal. Changing Compose alone cannot implement this option; enforcement, installer preconditions and the real bypass tests must change together.
+- A dedicated restricted resolver retains the internal fetch bridge but adds an operational service and must have a demonstrated, destination-scoped query path.
+- Delegating resolution and destination enforcement to the proxy could avoid another service, but removing the local precheck requires proving equivalent protection at actual connection time, including redirects and private-address/rebinding cases.
+
+These are design options, not approved or validated solutions. Choose by evidence and smallest complete change. Keep fetching disabled until the positive and negative paths pass.
+
+### Remaining mistakes and concerns
+
+1. **A green diagnostic harness can coexist with the DNS blocker** ([scripts/test-fetch-control-harness.sh](scripts/test-fetch-control-harness.sh), external DNS baseline and final result).
+   - **What this is:** The harness now expects post-rule external DNS to match its pre-rule baseline, including a blocked baseline.
+   - **Problem:** External DNS blocked before and after rules is useful attribution evidence, but can produce `HARNESS PASSED` while the real fetcher still cannot resolve a public employer. Container-running checks also do not establish that every listener process remains healthy, and exit 1 still covers more than an intentional network denial.
+   - **Fix:** Keep the baseline diagnostic, but distinguish “rules preserve baseline behavior” from “fetch topology usable.” The acceptance run for the chosen fix must require working external resolution and actual proxied HTTP/HTTPS, retain negative-path diagnostics and establish listener health. The full isolation runner referenced as `scripts/test-fetch-isolation.py` does not currently exist; the agent must supply that acceptance path rather than ask the owner to run a nonexistent file.
+   - **If we skip it:** The agent can mark a harness green without removing the collection blocker. This is an acceptance/reporting risk, not evidence that rules are installed on the real stack.
+
+2. **Evidence candidates silently stop before the end of valid listings** ([backend/app/ai/matching.py](backend/app/ai/matching.py), `extract_evidence_candidates`).
+   - **What this is:** The candidate loop stops at six chunks of at most 500 characters per span. Descriptions can contain up to 200,000 characters, and paragraph splitting can make the represented prefix shorter than 3,000 characters.
+   - **Problem:** A fresh isolated-source self-check used a valid 3,522-character description with a duty at the end. That duty was absent from every selectable candidate, without any size/scope error. The full span remains in state, but the model cannot select the required exact evidence when it occurs beyond the candidate prefix.
+   - **Fix:** Cover the accepted span within an explicit candidate/request budget or fail visibly when complete coverage cannot fit. Do not silently truncate the candidate pool. Add one regression beyond the six-chunk boundary; the existing 1,500-character late-evidence test does not exercise this case.
+   - **If we skip it:** Real postings can lose their decisive duties or requirements from explanations and be assessed using incomplete evidence. The documented claim of complete bounded candidates is stronger than the implementation.
+
+3. **An unsupported known domain judgment is converted into a successful unknown** ([backend/app/ai/matching.py](backend/app/ai/matching.py), focus-domain interpretation).
+   - **What this is:** If Jev returns `domain_status="not_met"` or `"met"` with `domain_evidence="insufficient"`, the adapter changes the domain result to unknown.
+   - **Problem:** A fresh synthetic self-check supplied an aligned high-scoring role, a known domain conflict and insufficient supporting evidence. The interpreter returned a valid unknown-domain `possible_match`, rather than rejecting the contradictory/unsupported assessment. All requested answer keys were supplied; this is not a missing-wire-field case.
+   - **Fix:** Preserve genuinely unknown judgments, but reject known outcomes lacking the selected support, as the criterion branch already does. Add a small regression for both known domain outcomes with insufficient evidence before live semantic acceptance.
+   - **If we skip it:** Unsupported responses can be recorded as successful assessments, concealing a model/evidence failure and weakening focus-domain handling.
+
+4. **Score and transfer evidence still relies on mechanically chosen excerpts** ([backend/app/ai/matching.py](backend/app/ai/matching.py), `score_evidence`, `connection_evidence`, `cite_span`).
+   - **What this is:** The score and connection cite the selected duties candidate plus the first 500 characters of `profile:experience`; preference intent is likewise cited from a prefix rather than separately selected support.
+   - **Problem:** `profile:experience` describes experience bounds, not the reviewed responsibilities and skills that might support a transferable connection. A role can be judged transferable because of a skill elsewhere in state while the displayed candidate-side quotation contains only experience totals. Exact-substring validation proves provenance, not the claimed relationship.
+   - **Fix:** Include suitable candidate-side evidence selections in the existing typed request and check the supporting meaning in the small semantic set. Keep the original professional-data privacy boundary; do not add a second explanatory model call.
+   - **If we skip it:** Matching may produce valid schema and quotations while the explanation fails to support its score or connection. This remains a matching-acceptance concern independent of DNS.
+
+### Inputs needed from the owner
+
+No additional CV, API key, model selection, paid budget or employer list is needed to investigate and implement the DNS fix. The agent can choose the technical approach, prepare the exact topology/configuration changes, tests and rollback, and validate everything within existing local authority. The owner need not choose among networking options on the agent's behalf.
+
+The only likely owner involvement for this blocker is **privileged execution or scoped host-change authorization**. The parent guide, FINISH_DEVELOPMENT_AND_VALIDATE.md sections 1 and 9, requires concrete scoped firewall/host changes to be reviewed where authorization is not already granted. Earlier approval for a particular disposable harness is not necessarily approval to install a changed policy on the real stack. If the agent cannot run the revised privileged harness, it should provide the exact reviewed command and ask the owner to run it, with sanitized output and exit status. Do not request passwords in chat or a blanket firewall/VPN/Docker-daemon change.
+
+A suitable continuation instruction is: “Resolve the fetcher DNS blocker using the smallest demonstrated restricted path. Prepare the changes and rollback, test them on disposable resources within existing authorization, and keep production fetching disabled. Ask me only for any specific privileged execution or new host change not already authorized. Do not add optional features or make unrelated network changes.”
+
+That instruction assigns implementation; this review itself does not start it. Real-stack installation approval should follow a concrete, reviewable fix and successful disposable checks. If the agent still reports that it needs owner input, it should name the exact missing permission or host constraint; “choose a DNS design” is not sufficient.
+
+Later deployment gates may separately need LAN/tailnet hostnames, client trust, notification-device access and backup destinations. Those are not prerequisites for diagnosing this DNS blocker.
+
+Verdict: the original installer regression is resolved, DNS attribution is materially better, and offline matching has improved. The blocker is narrowed but not removed; remaining evidence/interpretation defects prevent declaring matching complete. Continue focused acceptance work rather than expanding scope.
+
+Fresh checks: 7 mocked installer tests passed; shell syntax passed; isolated source/domain self-checks reproduced candidate truncation and unsupported-domain normalization, both with synthetic inputs and no provider imports or database/network/state access. Full backend/browser suites, actual host DNS/firewall enforcement, live matching, private ledger contents and deployed delivery/recovery were not rerun. No commit was made for this follow-up.
+
+## Historical execution review — baseline `594b1ab`, saved as `0aeb034`
+
 What this change does: This review assesses the work recorded through 2026-10-09, including the deployment-host continuation, first live API probes and fetch-isolation attempts. It updates the earlier architectural assessment with concrete implementation findings and a proposed next acceptance sequence.
 
 Review baseline: `594b1ab`, plus existing uncommitted changes in `deploy/fetch-control-rules.sh` and `scripts/test_fetch_rules.py`. Expected workload is one owner, one active candidate profile and selected-company monitoring. This is a progress and approach review with sampled code inspection, not a whole-repository security audit. Recommendations do not authorize implementation, host changes or further paid calls.

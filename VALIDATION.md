@@ -1,5 +1,13 @@
 # Validation
 
+## Follow-up review checks — 2026-10-09, baseline `4959867`
+
+Fresh `python3 scripts/test_fetch_rules.py`: 7 passed, exit 0, 2.187s. Fresh `bash -n deploy/fetch-control-rules.sh scripts/test-fetch-control-harness.sh`: exit 0. Neither check applies real host rules or creates Docker resources.
+
+Two synthetic isolated-source/domain self-checks reproduced remaining matching defects: a 3,522-character description's final duty is absent from all candidates after the six-chunk cap; and an aligned high-scoring focus-domain assessment with `domain_status=not_met` plus `domain_evidence=insufficient` returns unknown-domain `possible_match` rather than an assessment error. The checks loaded only selected matching definitions and domain/protocol contracts, with a stub task-input builder; no provider import, database, secrets, network, durable ledger or state writes occurred. They verify local interpretation/candidate behavior, not production orchestration or live model judgments.
+
+The latest recorded Docker DNS experiments and 329-test backend pass were inspected, not rerun. REVIEW.md contains the resulting resolution statuses, current blocker, remaining concerns and owner-input assessment. Documentation links, whitespace, balanced fences and final newlines passed for the three changed Markdown files; `git diff --check` passed. No implementation changes or commit were made.
+
 ## 2026-10-09 local cancellation and deployment handoff
 
 The owner canceled local live validation after a recorded unauthenticated metadata GET failed certificate verification (HTTPX ConnectError, diagnostic exit 2). Inference attempts, known spend and held spend were all zero in that checkpoint. No further OpenRouter call or application test was run during cleanup. The technical plan is now DEPLOYMENT_API_VALIDATION.md, integrated into the parent deployment guide; its live acceptance gates remain pending. The old development host-network workaround is excluded from deployment execution. Cleanup checks passed for all nine changed/new Markdown documents: local links, final newlines, whitespace, balanced fences, retired-filename removal and preserved checkpoint/model preference. Remote master was checked read-only and is an ancestor of the local branch; a normal push is sufficient at that observed state.
