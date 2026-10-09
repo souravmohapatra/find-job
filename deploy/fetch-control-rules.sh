@@ -2,162 +2,176 @@
 # Stateful fetch-control directionality rules for the jobfinder Docker bridges.
 #
 # NOT INSTALLED BY DEFAULT. Section 9 of FINISH_DEVELOPMENT_AND_VALIDATE.md requires
-# owner review of this exact rule set before installation. Compose `internal: true`
-# only removes the default internet route; it does not restrict same-bridge or
-# cross-bridge container traffic. These rules add the missing directionality:
+# owner review, and the corrected rule set must pass the disposable-network harness
+# (scripts/test-fetch-control-harness.sh) before installation on the real stack.
 #
+# What these rules enforce (Compose `internal: true` does NOT):
 #   - workers may open connections to the fetcher's RPC port; replies flow back
 #   - the fetcher may open connections ONLY to the egress proxy port
-#   - the fetcher and the proxy may not open connections to worker/backend
-#     addresses, other bridges, the host LAN, or the tailnet
+#   - fetcher/proxy may not open connections to worker/backend addresses, other
+#     bridges, the host (INPUT), the LAN or the tailnet
 #
-# Same-bridge traffic reaches these rules only because Docker enables
-# br_netfilter with bridge-nf-call-iptables=1; the verify command below asserts
-# that on this host. Rules are installed in DOCKER-USER (the sanctioned hook that
-# Docker guarantees is evaluated before container traffic) and carry the
-# "jobfinder-fetch-control" comment for exact-match removal on rollback.
+# Chain coverage: DOCKER-USER sees FORWARD traffic (cross-bridge and, through
+# Docker's br_netfilter hook, same-bridge). Container→HOST traffic traverses INPUT,
+# which DOCKER-USER never sees, so the fetcher addresses also get explicit INPUT
+# drops. Rules carry the "jobfinder-fetch-control" comment for exact-match removal.
 #
 # Usage:
-#   fetch-control-rules.sh install     # idempotent; refuses on unexpected state
-#   fetch-control-rules.sh verify      # assert rules present and host preconditions
+#   fetch-control-rules.sh install     # transactional; auto-rollback on error
+#   fetch-control-rules.sh verify      # assert rules present, addresses current
 #   fetch-control-rules.sh rollback    # remove exactly the marked rules
 #   fetch-control-rules.sh show        # print the managed rules
+#
+# The harness sources this file and calls apply_rules/remove_rules against a
+# disposable topology; the rule shapes are shared, never duplicated.
 
 set -u
 cd "$(dirname "$0")/.." # repo root: docker compose reads compose.yaml from here
-MARK="jobfinder-fetch-control"
-COMPOSE_PROJECT="jobfinder"
-# Ports the fetcher may CONTACT: egress proxy only.
-FETCHER_ALLOWED_PORT="3128"
-# Port workers may CONTACT on the fetcher.
-FETCHER_RPC_PORT="8001"
+# The harness overrides MARK so its disposable rules can never collide with (or be
+# removed by) the real stack's rollback.
+MARK="${MARK:-jobfinder-fetch-control}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-jobfinder}"
+FETCHER_ALLOWED_PORT="${FETCHER_ALLOWED_PORT:-3128}"
 
 die() { echo "BLOCKED: $*" >&2; exit 2; }
 need() { command -v "$1" >/dev/null || die "missing tool: $1"; }
-need iptables; need docker; need awk
 
 network_bridge() { # compose network name -> host bridge interface
-	local name network_id
-	name="${COMPOSE_PROJECT}_$1"
-	network_id=$(docker network inspect "$name" --format '{{.Id}}' 2>/dev/null) ||
-		die "network $name not found; is the compose stack up?"
+	local network_id
+	network_id=$(docker network inspect "${COMPOSE_PROJECT}_$1" --format '{{.Id}}' 2>/dev/null) ||
+		die "network ${COMPOSE_PROJECT}_$1 not found; is the compose stack up?"
 	printf 'br-%.12s' "$network_id"
 }
 
-container_ip() { # compose service -> IPv4 on its named network
+address_on() { # compose service, compose network -> IPv4 on that network
 	local container
 	container=$(docker compose -p "$COMPOSE_PROJECT" ps -q "$1" 2>/dev/null) ||
 		die "cannot query service $1"
 	[ -n "$container" ] || die "service $1 is not running"
 	docker inspect "$container" --format \
-		"{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}" | awk '{print $1}'
+		"{{range \$name, \$net := .NetworkSettings.Networks}}{{if eq \$name \"${COMPOSE_PROJECT}_$2\"}}{{\$net.IPAddress}}{{end}}{{end}}"
 }
-
-fetcher_ip() { container_ip fetcher; }
-proxy_ip() { container_ip egress-proxy; }
 
 assert_preconditions() {
 	docker network inspect "${COMPOSE_PROJECT}_fetch_control" --format '{{json .Internal}}' |
 		grep -q true || die "fetch_control must be an internal network"
 	docker network inspect "${COMPOSE_PROJECT}_fetch" --format '{{json .Internal}}' |
 		grep -q true || die "fetch must be an internal network"
-	# Same-bridge traffic must traverse iptables for these rules to bind.
+	# Same-bridge traffic reaches the rules only through Docker's netfilter hook.
 	[ "$(cat /proc/sys/net/bridge/bridge-nf-call-iptables 2>/dev/null)" = "1" ] ||
 		die "bridge-nf-call-iptables is not 1; same-bridge traffic would bypass these rules"
-	iptables -L DOCKER-USER >/dev/null 2>&1 ||
-		die "DOCKER-USER chain missing; Docker firewall management is unavailable"
+	iptables -L DOCKER-USER >/dev/null 2>&1 || die "cannot read DOCKER-USER (root required)"
 }
 
-rule() { # print the managed rule for the given arguments
-	iptables -S DOCKER-USER | grep -- "$MARK"
+# apply_rules <fc_bridge> <fetch_bridge> <fetcher_fc_ip> <fetcher_fetch_ip> <proxy_ip>
+# Every rule is marked; any failure returns nonzero so install can roll back.
+apply_rules() {
+	local fc_bridge=$1 fetch_bridge=$2 fetcher_fc=$3 fetcher_fetch=$4 proxy=$5
+	local rule
+	# Replies for established flows, both bridges.
+	iptables -I DOCKER-USER 1 -i "$fc_bridge" -o "$fc_bridge" \
+		-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment "$MARK" || return 1
+	iptables -I DOCKER-USER 2 -i "$fetch_bridge" -o "$fetch_bridge" \
+		-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment "$MARK" || return 1
+	# fetch_control: the fetcher initiates nothing toward worker addresses.
+	iptables -I DOCKER-USER 3 -i "$fc_bridge" -o "$fc_bridge" -s "$fetcher_fc" \
+		-m conntrack --ctstate NEW -j DROP -m comment --comment "$MARK" || return 1
+	# fetch bridge: the proxy initiates nothing.
+	iptables -I DOCKER-USER 4 -i "$fetch_bridge" -o "$fetch_bridge" -s "$proxy" \
+		-m conntrack --ctstate NEW -j DROP -m comment --comment "$MARK" || return 1
+	# fetch bridge: the fetcher's ONLY permitted outbound initiation.
+	iptables -I DOCKER-USER 5 -i "$fetch_bridge" -o "$fetch_bridge" -s "$fetcher_fetch" \
+		-d "$proxy" -p tcp --dport "$FETCHER_ALLOWED_PORT" -m conntrack --ctstate NEW \
+		-j ACCEPT -m comment --comment "$MARK" || return 1
+	iptables -I DOCKER-USER 6 -i "$fetch_bridge" -o "$fetch_bridge" -s "$fetcher_fetch" \
+		-m conntrack --ctstate NEW -j DROP -m comment --comment "$MARK" || return 1
+	# Cross-bridge and routed egress from either fetcher address (LAN, tailnet).
+	iptables -I DOCKER-USER 7 -s "$fetcher_fc" -m conntrack --ctstate NEW \
+		-j DROP -m comment --comment "$MARK" || return 1
+	iptables -I DOCKER-USER 8 -s "$fetcher_fetch" -m conntrack --ctstate NEW \
+		-j DROP -m comment --comment "$MARK" || return 1
+	# Container→host traffic bypasses FORWARD entirely: cover INPUT explicitly.
+	iptables -I INPUT 1 -s "$fetcher_fc" -m conntrack --ctstate NEW \
+		-j DROP -m comment --comment "$MARK" || return 1
+	iptables -I INPUT 2 -s "$fetcher_fetch" -m conntrack --ctstate NEW \
+		-j DROP -m comment --comment "$MARK" || return 1
+}
+
+# remove_rules: delete exactly the marked rules, newest first, both chains.
+remove_rules() {
+	local rule
+	while read -r rule; do
+		[ -n "$rule" ] || continue
+		rule=${rule#-A DOCKER-USER }
+		iptables -D DOCKER-USER $rule || die "failed to remove DOCKER-USER rule: $rule"
+	done < <(iptables -S DOCKER-USER | grep -- "$MARK" | tac)
+	while read -r rule; do
+		[ -n "$rule" ] || continue
+		rule=${rule#-A INPUT }
+		iptables -D INPUT $rule || die "failed to remove INPUT rule: $rule"
+	done < <(iptables -S INPUT | grep -- "$MARK" | tac)
+}
+
+rule_counts() {
+	echo "$(iptables -S DOCKER-USER | grep -c -- "$MARK") $(iptables -S INPUT | grep -c -- "$MARK")"
 }
 
 install() {
+	need docker
 	assert_preconditions
-	local fc_bridge fetch_bridge fetcher proxy
-	fc_bridge=$(network_bridge fetch_control)
-	fetch_bridge=$(network_bridge fetch)
-	fetcher=$(fetcher_ip)
-	proxy=$(proxy_ip)
-	[ -n "$fetcher" ] && [ -n "$proxy" ] || die "fetcher/proxy addresses unresolved"
-
-	# Idempotency: refuse when unexpected managed rules exist from a different
-	# topology; a previous identical install is a no-op.
-	if iptables -S DOCKER-USER | grep -q -- "$MARK"; then
-		echo "managed rules already present; verifying instead"
-		verify
-		return
+	if [ "$(rule_counts)" != "8 2" ]; then
+		[ "$(rule_counts)" = "0 0" ] || die "unexpected existing managed rules; run rollback first"
 	fi
+	local fc_bridge fetch_bridge fetcher_fc fetcher_fetch proxy
+	fc_bridge=$(network_bridge fetch_control) || return 1
+	fetch_bridge=$(network_bridge fetch) || return 1
+	fetcher_fc=$(address_on fetcher fetch_control) || return 1
+	fetcher_fetch=$(address_on fetcher fetch) || return 1
+	proxy=$(address_on egress-proxy fetch) || return 1
+	[ -n "$fetcher_fc" ] && [ -n "$fetcher_fetch" ] && [ -n "$proxy" ] ||
+		die "fetcher/proxy addresses unresolved on the expected networks"
 
-	# 1) Replies for established flows in both directions, on both bridges.
-	iptables -I DOCKER-USER 1 -i "$fc_bridge" -o "$fc_bridge" \
-		-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment "$MARK"
-	iptables -I DOCKER-USER 2 -i "$fetch_bridge" -o "$fetch_bridge" \
-		-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment "$MARK"
-
-	# 2) fetch_control: drop NEW connections INITIATED BY the fetcher (source
-	#    fetcher IP). Worker-initiated RPC to the fetcher stays allowed; the reply
-	#    is covered by the established rule above.
-	iptables -I DOCKER-USER 3 -i "$fc_bridge" -o "$fc_bridge" -s "$fetcher" \
-		-m conntrack --ctstate NEW -j DROP -m comment --comment "$MARK"
-
-	# 3) fetch bridge: the fetcher may open only the proxy port; the proxy may
-	#    open nothing. Worker backend networks are unreachable from this bridge
-	#    (internal, no gateway), and these rules hold even if that changes.
-	iptables -I DOCKER-USER 4 -i "$fetch_bridge" -o "$fetch_bridge" -s "$proxy" \
-		-m conntrack --ctstate NEW -j DROP -m comment --comment "$MARK"
-	iptables -I DOCKER-USER 5 -i "$fetch_bridge" -o "$fetch_bridge" -s "$fetcher" \
-		-d "$proxy" --dport "$FETCHER_ALLOWED_PORT" -m conntrack --ctstate NEW \
-		-j ACCEPT -m comment --comment "$MARK"
-	iptables -I DOCKER-USER 6 -i "$fetch_bridge" -o "$fetch_bridge" -s "$fetcher" \
-		-m conntrack --ctstate NEW -j DROP -m comment --comment "$MARK"
-
-	# 4) Cross-bridge and routed egress from the fetcher (LAN, host, tailnet):
-	#    drop NEW in either direction through any other interface, in addition to
-	#    Docker's absent default route on internal networks.
-	iptables -I DOCKER-USER 7 -s "$fetcher" -m conntrack --ctstate NEW \
-		-j DROP -m comment --comment "$MARK"
-
-	echo "installed. Rules survive only until the next boot or Docker restart;"
-	echo "install the fetch-control-rules systemd unit for persistence (see"
-	echo "deploy/fetch-isolation.md) and run: fetch-control-rules.sh verify"
+	# Transactional: any failure rolls the partial policy back before exiting.
+	if ! apply_rules "$fc_bridge" "$fetch_bridge" "$fetcher_fc" "$fetcher_fetch" "$proxy"; then
+		remove_rules
+		die "rule installation failed; partial rules were rolled back"
+	fi
+	verify
+	echo "installed. Rules are lost on reboot; install the persistence unit"
+	echo "(deploy/jobfinder-fetch-control.service) only after the acceptance matrix passes."
 }
 
 verify() {
 	assert_preconditions
-	local count
-	count=$(iptables -S DOCKER-USER | grep -c -- "$MARK")
-	[ "$count" -eq 7 ] || die "expected 7 managed rules, found $count; run rollback and reinstall"
-	# Container addresses must still match the rules; a recreated container moves.
-	local fetcher proxy
-	fetcher=$(fetcher_ip)
-	proxy=$(proxy_ip)
-	iptables -S DOCKER-USER | grep -q -- "-s $fetcher " ||
-		die "fetcher address changed since install; rollback and reinstall"
-	iptables -S DOCKER-USER | grep -q -- "-s $proxy " ||
-		die "proxy address changed since install; rollback and reinstall"
-	echo "verified: 7 managed rules present and bound to current addresses"
+	[ "$(rule_counts)" = "8 2" ] || die "expected 8 DOCKER-USER and 2 INPUT managed rules, found $(rule_counts)"
+	local fetcher_fc fetcher_fetch proxy
+	fetcher_fc=$(address_on fetcher fetch_control) || return 1
+	fetcher_fetch=$(address_on fetcher fetch) || return 1
+	proxy=$(address_on egress-proxy fetch) || return 1
+	iptables -S DOCKER-USER | grep -q -- "-s $fetcher_fc " || die "fetcher control address changed; rollback and reinstall"
+	iptables -S DOCKER-USER | grep -q -- "-s $fetcher_fetch " || die "fetcher egress address changed; rollback and reinstall"
+	iptables -S DOCKER-USER | grep -q -- "-s $proxy " || die "proxy address changed; rollback and reinstall"
+	echo "verified: rules present and bound to current addresses"
 }
 
 rollback() {
-	local rule
-	# Delete ONLY rules carrying the marker, newest first for stable indices.
-	while read -r rule; do
-		[ -n "$rule" ] || continue
-		rule=${rule#-A DOCKER-USER }
-		iptables -D DOCKER-USER $rule || die "failed to remove rule: $rule"
-	done < <(iptables -S DOCKER-USER | grep -- "$MARK" | tac)
+	need docker
+	remove_rules
 	echo "rolled back: managed rules removed; Docker defaults restored"
 }
 
 show() {
-	iptables -S DOCKER-USER | grep -- "$MARK" || echo "no managed rules present"
+	echo "DOCKER-USER:"; iptables -S DOCKER-USER | grep -- "$MARK" || echo "  (none)"
+	echo "INPUT:"; iptables -S INPUT | grep -- "$MARK" || echo "  (none)"
 }
 
-case "${1:-}" in
-install) install ;;
-verify) verify ;;
-rollback) rollback ;;
-show) show ;;
-*) echo "usage: $0 {install|verify|rollback|show}" >&2; exit 2 ;;
-esac
+# CLI entry: skipped when the harness sources this file for apply_rules/remove_rules.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+	case "${1:-}" in
+	install) install ;;
+	verify) verify ;;
+	rollback) rollback ;;
+	show) show ;;
+	*) echo "usage: $0 {install|verify|rollback|show}" >&2; exit 2 ;;
+	esac
+fi

@@ -91,6 +91,8 @@ Prepared for owner review, nothing installed: `deploy/fetch-control-rules.sh` (i
 
 NOT done: installation (requires owner approval — host firewall), the real-container matrix run, the `JOBFINDER_FETCH_ISOLATION_VERIFIED` enablement/preflight change. Next: owner reviews the rule set; on approval, install, run `scripts/test-fetch-isolation.py` against the controlled acceptance instance, then implement the reviewed enablement override.
 
+Advisor corrections (same day, before any install): rule 5 lacked `-p tcp` (iptables would reject it mid-install and leave a partial policy — install is now transactional with auto-rollback); `container_ip` returned one address for a dual-homed container (now per-network: the fetcher has distinct `fetch_control`/`fetch` addresses and the rules reference both); and `DOCKER-USER` is a FORWARD hook that never sees container→host traffic, so the fetcher addresses also get explicit INPUT drops (8 DOCKER-USER + 2 INPUT rules; the earlier PROGRESS claim of host coverage was wrong and is corrected here). The rule module is now sourceable (`apply_rules`/`remove_rules`, marker overridable) and the new `scripts/test-fetch-control-harness.sh` exercises the exact rule function against a disposable two-bridge topology with busybox-nc probes (worker→fetcher allowed, fetcher→worker blocked, fetcher→proxy:3128 allowed, proxy→fetcher blocked, fetcher→real-host-listener blocked via INPUT, embedded-DNS still resolving) and full cleanup on exit. It requires sudo (passwordless sudo is not available on this host); the owner runs `sudo scripts/test-fetch-control-harness.sh`, and the real install proceeds only after it passes.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 
