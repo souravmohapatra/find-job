@@ -73,6 +73,16 @@ Owner decision (2026-10-09): live Decisions (Jev) dispatch is unblocked only aft
 
 Advisory fix (same day): the backstop check now requires finite usage/limit (`NaN` previously slipped through both comparisons), rejects resetting limits (`limit_reset`, e.g. `"monthly"` — a resetting allowance cannot enforce the cumulative cap), and rejects exhausted or non-finite `limit_remaining` (both documented in the OpenAPI key schema). A real diagnostics log now exists: `provision_database` failures write the sanitized psql stderr to ignored `.data/live_run_<run-id>_diagnostics.log` instead of claiming a nonexistent log. New `backend/tests/test_live_launcher.py` (9 tests, all offline via faked `httpx.get`, NaN injected as raw wire bytes): valid static limit passes; oversized/unset/NaN-limit/NaN-usage/resetting/exhausted/NaN-remaining all rejected; the metadata attempt counter increments even on failure. Full suite: 320 passed, exit 0; ruff clean. Still awaiting the owner's dashboard action (key limit ≤ US$1) before Phase C.
 
+Owner decision revised (same day): the US$1 cap is advisory for validation only; the $5 monthly-resetting key limit is acceptable as an additional provider backstop. If any charge exceeds the cap, stop and consult the owner. The launcher reports oversized/resetting backstops as notes; only an absent, non-finite or exhausted backstop blocks. `run_probes()` (Phase C: pending-operations check, synthetic bounded revisions, Luna probe then Jev probe, stop at first failure) was exercised offline with MockTransport first — success path (two probes, exact URLs, terminal states, revisions), first-probe failure path (zero Jev posts, one revision) and a model-mismatch guard catch — before its first paid run.
+
+## Phase C live probe checkpoint — 2026-10-09
+
+First live OpenRouter traffic (run `20261009_142304`): Luna chat probe succeeded — returned `openai/gpt-6-luna`, cost $0.00000635, latency 6336 ms, generation ID recorded. Jev Decisions probe succeeded with `data_collection="deny"` accepted — returned `typesafe/jev-1.13-20260917` (dated-version rule), cost $0.00001369, latency 490 ms, generation ID recorded. Ledger after: 2 attempts, $0.000020042 known, nothing held. Bridge removed; no leftovers.
+
+En route, one production defect surfaced and was fixed before any probe could run: `endpoint_tags` treated the documented `overrides` tier list (and initially its `min_prompt_tokens` thresholds) as unknown per-request charges, rejecting every Luna endpoint. Replaced with `priced_within` (base + every override tier validated against the configured ceilings; `discount`/`min_prompt_tokens` treated as metadata; uninterpretable values fail closed) plus two regression tests. Suite: 324 passed, exit 0; ruff and strict mypy clean.
+
+Evidence recorded in VALIDATION.md. Limits: one probe per protocol, synthetic payloads; deny enforcement is verified only to the extent externally observable (request accepted, routed to TypeSafe, no error). Next: section 8 remaining items — no further live probes until the next batch; then phases 9+ of the FINISH plan (fetching isolation, browser collection, ntfy digest, backups) per plan order.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 

@@ -252,3 +252,12 @@ Six synthetic retention tests pass (0.082s), covering seven daily/four weekly se
 Systemd unit verification passed for both supplied templates (exit 0); unrelated existing host-unit PIDFile warnings were emitted. Calendar parsing showed the next two 02:00 host-local occurrences. No units were installed/enabled, no real backup pruned, and no scheduled execution or downtime/restart acceptance is claimed.
 
 Final combined recovery/retention run: 21 tests passed in 11.983s (exit 0). Ruff/format passed for all 20 scripts; git diff --check passed.
+
+
+## Live OpenRouter probes on the deployment host — 2026-10-09
+
+First live OpenRouter traffic, run through `scripts/validate-live-api.py --execute-live` (run `20261009_142304`) with the temporary key bridge and the cumulative run ledger. Luna chat probe (`openai/gpt-6-luna`, profile_analysis, synthetic probe payload): HTTP 200, terminal state `succeeded`, returned model `openai/gpt-6-luna`, cost $0.00000635, latency 6336 ms, generation ID recorded. Jev Decisions probe (`typesafe/jev-1.13`, job_matching, typed "ok" question, `provider.data_collection="deny"`, `zdr=false`): HTTP 200, terminal state `succeeded`, returned model `typesafe/jev-1.13-20260917` (accepted by the exact-prefix dated-version rule), cost $0.00001369, latency 490 ms, generation ID recorded. Ledger after the run: 2 attempts, $0.000020042 known, nothing held. Key metadata (1 GET): usage $0, limit $5, resetting monthly — recorded as advisory notes per the owner's same-day decision that the US$1 validation cap is advisory; the ledger remains the pre-dispatch admission gate.
+
+Also validated live: the capability preflight defect fix (tiered `overrides`/`discount` pricing had blocked all Luna endpoints; fixed and regression-tested offline), the `--execute-live` key-bridge lifecycle (created 0600 before first settings use, removed on shutdown, no leftovers), and Gate A offline refusals in the same run.
+
+Limits: one probe per protocol, synthetic payloads only. This does not establish deny enforcement beyond request acceptance (not externally observable), matched-task quality, prompt usefulness, fetcher isolation, digest delivery, or deployment acceptance. No retries were sent; no live request exceeded the advisory cap.
