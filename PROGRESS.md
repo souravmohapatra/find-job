@@ -4,6 +4,12 @@ Historical private-registry endpoints in this document are anonymized as `packag
 
 Updated: 2026-10-09. Progress/approach review completed; deployment and matching acceptance remain open. Original development-network live validation remains canceled.
 
+## Direction advice recorded — 2026-10-09
+
+At the owner's request, recorded the follow-up judgment and its details in ADVISE.md, grounded in the review commit `0aeb034`: product scope remains aligned, but execution has drifted toward premature breadth before proving usefulness. The advice distinguishes required correctness/security/operations complexity from optional refinement, assesses the attempts and recommends freezing expansion while completing isolation, actual-schema/semantic checks and a representative real monitoring/digest journey. It proposes no rewrite or removal of existing guarantees and changes no confirmed requirements or paid-work authorization.
+
+Existing uncommitted edits in deploy/fetch-isolation.md, scripts/test-fetch-control-harness.sh and scripts/test_fetch_rules.py are preserved. The earlier review's failure findings are explicitly dated; they were not rerun against these newer edits. This task writes documentation only. Advice/progress checks passed for local links, whitespace, balanced fences and final newlines; `git diff --check` passed. Saving only ADVISE.md and PROGRESS.md locally, with no push. Next: complete the isolation and core-journey acceptance in a separate implementation assignment. No `.agent` was created without agreement.
+
 ## Progress/approach review checkpoint — 2026-10-09 (completed)
 
 Owner requested reviewing progress, approach and attempts and recording the result in REVIEW.md. Inspected planning/decision/validation records, recent Git history, the existing review, the uncommitted firewall/test diff, the shared installer/harness, fetcher DNS precheck and Decisions matching conversion. Existing uncommitted source edits are preserved; this assignment does not resume implementation, firewall installation or paid validation. No `.agent` directory exists; memory initialization remains optional pending owner agreement.
