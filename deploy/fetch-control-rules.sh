@@ -54,13 +54,14 @@ address_on() { # compose service, compose network -> IPv4 on that network
 
 assert_preconditions() {
 	docker network inspect "${COMPOSE_PROJECT}_fetch_control" --format '{{json .Internal}}' |
-		grep -q true || die "fetch_control must be an internal network"
+		grep -q true || { echo "BLOCKED: fetch_control must be an internal network" >&2; return 1; }
 	docker network inspect "${COMPOSE_PROJECT}_fetch" --format '{{json .Internal}}' |
-		grep -q true || die "fetch must be an internal network"
+		grep -q true || { echo "BLOCKED: fetch must be an internal network" >&2; return 1; }
 	# Same-bridge traffic reaches the rules only through Docker's netfilter hook.
-	[ "$(cat /proc/sys/net/bridge/bridge-nf-call-iptables 2>/dev/null)" = "1" ] ||
-		die "bridge-nf-call-iptables is not 1; same-bridge traffic would bypass these rules"
-	iptables -L DOCKER-USER >/dev/null 2>&1 || die "cannot read DOCKER-USER (root required)"
+	[ "$(cat "${BRIDGE_NF_PROC:-/proc/sys/net/bridge/bridge-nf-call-iptables}" 2>/dev/null)" = "1" ] ||
+		{ echo "BLOCKED: bridge-nf-call-iptables is not 1; same-bridge traffic would bypass these rules" >&2; return 1; }
+	iptables -L DOCKER-USER >/dev/null 2>&1 ||
+		{ echo "BLOCKED: cannot read DOCKER-USER (root required)" >&2; return 1; }
 }
 
 # apply_rules <fc_bridge> <fetch_bridge> <fetcher_fc_ip> <fetcher_fetch_ip> <proxy_ip>
@@ -118,10 +119,21 @@ rule_counts() {
 
 install() {
 	need docker
-	assert_preconditions
-	if [ "$(rule_counts)" != "8 2" ]; then
-		[ "$(rule_counts)" = "0 0" ] || die "unexpected existing managed rules; run rollback first"
-	fi
+	assert_preconditions || die "preconditions failed"
+	case "$(rule_counts)" in
+	"8 2")
+		# Idempotent reinstall: verify the existing rules; on address drift,
+		# replace them rather than stacking a duplicate set.
+		if verify >/dev/null 2>&1; then
+			echo "managed rules already present and current; verified"
+			return
+		fi
+		echo "managed rules are stale (container addresses changed); reinstalling"
+		remove_rules
+		;;
+	"0 0") ;;
+	*) die "unexpected existing managed rules; run rollback first" ;;
+	esac
 	local fc_bridge fetch_bridge fetcher_fc fetcher_fetch proxy
 	fc_bridge=$(network_bridge fetch_control) || return 1
 	fetch_bridge=$(network_bridge fetch) || return 1
@@ -136,21 +148,31 @@ install() {
 		remove_rules
 		die "rule installation failed; partial rules were rolled back"
 	fi
-	verify
+	if ! verify; then
+		remove_rules
+		die "post-install verification failed; rules were rolled back"
+	fi
 	echo "installed. Rules are lost on reboot; install the persistence unit"
 	echo "(deploy/jobfinder-fetch-control.service) only after the acceptance matrix passes."
 }
 
 verify() {
-	assert_preconditions
-	[ "$(rule_counts)" = "8 2" ] || die "expected 8 DOCKER-USER and 2 INPUT managed rules, found $(rule_counts)"
+	# Return-based (never die): install reuses verify inside conditional branches,
+	# where an exit would kill the script with swallowed diagnostics.
+	assert_preconditions || return 1
+	[ "$(rule_counts)" = "8 2" ] ||
+		{ echo "BLOCKED: expected 8 DOCKER-USER and 2 INPUT managed rules, found $(rule_counts)" >&2; return 1; }
 	local fetcher_fc fetcher_fetch proxy
 	fetcher_fc=$(address_on fetcher fetch_control) || return 1
 	fetcher_fetch=$(address_on fetcher fetch) || return 1
 	proxy=$(address_on egress-proxy fetch) || return 1
-	iptables -S DOCKER-USER | grep -q -- "-s $fetcher_fc " || die "fetcher control address changed; rollback and reinstall"
-	iptables -S DOCKER-USER | grep -q -- "-s $fetcher_fetch " || die "fetcher egress address changed; rollback and reinstall"
-	iptables -S DOCKER-USER | grep -q -- "-s $proxy " || die "proxy address changed; rollback and reinstall"
+	# iptables renders source addresses as IP/32; match the slash prefix.
+	iptables -S DOCKER-USER | grep -q -- "-s $fetcher_fc/" ||
+		{ echo "BLOCKED: fetcher control address changed; rollback and reinstall" >&2; return 1; }
+	iptables -S DOCKER-USER | grep -q -- "-s $fetcher_fetch/" ||
+		{ echo "BLOCKED: fetcher egress address changed; rollback and reinstall" >&2; return 1; }
+	iptables -S DOCKER-USER | grep -q -- "-s $proxy/" ||
+		{ echo "BLOCKED: proxy address changed; rollback and reinstall" >&2; return 1; }
 	echo "verified: rules present and bound to current addresses"
 }
 
