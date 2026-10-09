@@ -18,12 +18,10 @@ Next: provision a project-local uv 0.12.23 under ignored `.tools/`, regenerate l
 
 Done: uv 0.12.23 provisioned under ignored `.tools/uv-pkg` (python3-venv is not installed, so `ensurepip` venv creation failed and no sudo was used). `backend/uv.lock` regenerated against public `pypi.org` / `files.pythonhosted.org` via `uv lock --default-index https://pypi.org/simple` in a scratch copy first. Comparison: 57 packages before and after, no version changes, no adds or removes, 252 artifact hashes preserved. `uv sync --project backend --frozen --python 3.12` succeeded (exit 0).
 
-Blocker (frontend, npm): `npm install --package-lock-only` on a scratch copy of `frontend/package-lock.json` failed with `npm error code ENOTFOUND`, `syscall getaddrinfo`, host `artifactory.arm.com`, package `@tailwindcss/oxide-wasm32-wasi@4.3.3`, after 3 attempts. All 390 `resolved` URLs in the frontend lock still use `artifactory.arm.com:443`. Per AGENTS.md dependency boundary, frontend install, the `npm ci` in the frontend Docker build, and frontend tests are stopped. Not retried; no registry rewrite, mirror or proxy change was attempted. Needs owner input: the lock must be regenerated against a reachable public registry, or the owner must authorize a different route.
+Frontend npm lock: the earlier fetch blocker (`ENOTFOUND` on the previous package host, `@tailwindcss/oxide-wasm32-wasi@4.3.3`, 3 attempts) is resolved by owner authorization to use the public npm registry. `frontend/package-lock.json` was rewritten with a script (since removed) that changed only the 390 `resolved` URL prefixes to `https://registry.npmjs.org/`. Verified: the diff is exactly 390 `resolved` lines; 390 `integrity` values unchanged; `npm ci --ignore-scripts --registry=https://registry.npmjs.org/` in a scratch copy exited 0 (321 packages added). Frontend image, compose stack, Luna/Jev live validation and budget work are not yet started.
 
-Next: backend Docker build, which does not depend on the frontend lock.
-Backend image: `docker build -f deploy/backend.Dockerfile -t jobfinder-backend:local .` succeeded (exit 0, image `63b6a512bebf`). Smoke: `docker run --rm --entrypoint python jobfinder-backend:local -c "import app.main"` printed `import ok FastAPI` (exit 0). No secret was mounted and no model or metadata request was made.
+Next: confirm frontend build from the rewritten lock, then the frontend image.
 
-Stopped here: frontend npm lock regeneration is blocked (see the dependency-intake entry above). Frontend image, compose stack, Luna/Jev live validation and budget work not started.
 
 
 ## Current state
