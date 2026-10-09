@@ -1,5 +1,9 @@
 # Profile analysis and matching
 
+## Current validation direction — 2026-10-09
+
+For local live testing, the owner selected GPT-6 Luna for `profile_analysis` and `job_extraction`, and TypeSafe Jev for `job_matching`. See [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) for exact initial IDs, the approved cumulative US$1 / 60-request cap and staged acceptance gates. Jev requires a native typed-decision endpoint and evidence-backed conversion into the existing assessment policy; the chat-only integration described below is the current implementation, not a compatible Jev implementation. Preserve the broad-shortlist, evidence, privacy and failure rules. No live model result or Jev adapter has been validated yet. The earlier unset-model/preset and deployment-first direction is superseded for this local effort.
+
 ## AI integration and task routing
 
 Use OpenRouter for every LLM call. Implement one backend HTTPX client for `POST https://openrouter.ai/api/v1/chat/completions`, wrapped by a task dispatcher and validated Pydantic contracts. API keys stay in server-side secret files. Do not deploy a local model server. [OpenRouter API reference](https://openrouter.ai/docs/api/reference/overview).

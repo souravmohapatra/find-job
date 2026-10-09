@@ -1,5 +1,9 @@
 # Validation
 
+## 2026-10-09 live-validation planning evidence
+
+Prepared [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) against the current integration code and official public provider documentation. Checked its local links, Markdown fence balance and whitespace; verified that FINISH_DEVELOPMENT_AND_VALIDATE.md differs from its committed body only by the added execution notice. Model choices and the owner's cumulative US$1 / 60-inference-request limit are recorded in the active guidance. No key value was read and no authenticated provider request, dependency operation, application test or live model evaluation ran. All live-plan acceptance gates remain pending; historical test counts below are not fresh results for this work.
+
 ## Current evidence
 
 Authentication and profile ingestion/review now have real PostgreSQL/worker/browser validation under the approved host-network development setup. The current backend suite has 17 passing tests; seven frontend component tests pass. OpenRouter integration/model quality, collection, matching, notification and release gates below remain pending. See the dated evidence entries and PROGRESS.md for scope and commands.

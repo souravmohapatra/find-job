@@ -2,9 +2,17 @@
 
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
-Updated: 2026-10-08. Latest handoff: FINISH_DEVELOPMENT_AND_VALIDATE.md, prepared for continuation on the deployment host.
+Updated: 2026-10-09. Active planning task: LIVE_API_VALIDATION.md for another agent to execute in this development environment. The deployment-host guide is gated on an explicit user request.
 
 ## Current state
+
+2026-10-09 live-validation plan completed: [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) gives the next agent staged local execution steps, source-file findings, offline and live gates, Jev protocol/evidence adaptation, synthetic semantic cases, regression commands and reporting requirements. The owner selected GPT-6 Luna for generative tasks and TypeSafe Jev for matching, and approved US$1 total or 60 inference requests, whichever comes first, including probes/retries/repairs across phases and restarts. The initial pinned Jev version is a documented implementation default, subject to fresh official verification.
+
+The owner reports a key in ignored `.env`; its value has not been inspected. Source inspection confirms that the backend reads a key-only secret file, does not automatically load `.env`, and routes every task/probe through chat completions. The plan addresses these gaps without claiming implementation. Official Jev and TypeSafe documentation confirms a native typed-decision interface; detailed OpenRouter Decisions routing/privacy/billing behavior still needs verification because its separate API-reference page was unavailable during research. This is a documented execution gate, not a diagnosed live failure.
+
+Documentation checks pass: relative links, Markdown fence balance, whitespace, source entry points, and exact preservation of the deployment guide's original body beneath its new execution notice. Updated the decision register and active guidance so the next agent does not follow stale model/preset/deployment-first directions. No authenticated provider request, key read, dependency download, application implementation or runtime test occurred; planning spend/request count is zero. Next action for the executing agent: Phase A of LIVE_API_VALIDATION.md, followed by the offline harness tests. Deployment remains deferred until explicitly requested.
+
+The deployment continuation paragraphs below describe the previous handoff. They do not set the next action while the local live-validation plan is active.
 
 Repository publication cleanup: employer-specific wording and internal hostnames have been removed or anonymized in current and historical Markdown snapshots. Commit messages are generic and authors/committers use the owner's personal identity. Recorded commit references in current documents have been mapped to the rewritten history. Application files and dependency lockfile contents are unchanged; private-registry lock migration remains a separate deployment prerequisite. Lockfiles remain tracked reproducibility inputs, not build artifacts. The owner must replace the already-published branch with an explicit force-with-lease push; no push was performed here.
 

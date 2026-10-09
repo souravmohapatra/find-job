@@ -13,6 +13,7 @@ Selected foundation: React/TypeScript/Vite, FastAPI/Python, PostgreSQL with Proc
 | [AGENTS.md](AGENTS.md) | Workspace rules and authorized scope |
 | [CONTEXT.md](CONTEXT.md) | Intent and user requirements |
 | [PLAN.md](PLAN.md) | Delivery milestones |
+| [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) | Current development-environment API, prompt and matching validation plan; approved models and budget |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Logical and runtime architecture |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | Stack, code structure, background execution |
 | [DATA_MODEL.md](DATA_MODEL.md) | Tables, identity, history and invariants |
@@ -70,7 +71,7 @@ For an optional real local parsing check, run `backend/.venv/bin/python scripts/
 
 Settings now supports independent CV-analysis, job-extraction and job-matching model IDs, optional explicit fallbacks/provider slugs, zero data retention routing, per-task token/timeout/price ceilings and daily budgets. Models start unset. Saving settings never makes a paid request. The separate validation action uses synthetic input; mock mode labels it mock-only and makes no provider call. It is not a model-quality evaluation.
 
-Live mode reads the key from `JOBFINDER_OPENROUTER_KEY_FILE` (default `/run/secrets/openrouter_api_key`). Supply an absolute server-side path to a private key file; never enter the key into the browser or commit it. The current development browser fixture always sets mock mode. Live testing remains deferred until the owner supplies a key and selects task models.
+Live mode reads the key from `JOBFINDER_OPENROUTER_KEY_FILE` (default `/run/secrets/openrouter_api_key`); it does not automatically load root `.env`. Supply an absolute server-side path to a private key-only file; never enter the key into the browser or commit it. The current development browser fixture always sets mock mode. The owner has selected models and authorized bounded local testing under [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md); its credential bridge and Jev adapter are planned work, not validated capabilities.
 
 Usage records store configuration/generation/model IDs, token counts and cost metadata, not CV prompts or model responses. Unknown-cost requests retain their reservation and pause that task. Settings provides provider billing lookup when a generation ID is known and explicit owner-verified cost entry otherwise. Enter zero only after verifying that the provider did not charge. Recovery records cost provenance and releases the unresolved hold; it never automatically retries the AI request.
 

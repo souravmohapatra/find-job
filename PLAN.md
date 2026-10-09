@@ -1,5 +1,7 @@
 # Delivery plan
 
+Current priority, 2026-10-09: execute [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) in this development environment when assigned the continuation. Establish the non-AI harness first, then model prompts/parsing and the synthetic integrated journey, using the owner's selected models and approved spending cap. Deployment-host continuation remains deferred until explicitly requested. The earlier host-first/model-deferred statements below are historical for this local effort; full deployment release gates still apply later.
+
 Updated: 2026-10-08. Technical decisions are now authorized and documented. Implementation is active; current evidence and outstanding gates are recorded below.
 
 ## Intended outcome

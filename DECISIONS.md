@@ -1,5 +1,11 @@
 # Decision register
 
+## Local live-validation update — 2026-10-09
+
+The owner has postponed the move and requested a plan for another agent to validate in the existing development environment: first API transport, responses, accounting and orchestration, then prompts/parsing and semantic behavior. Use `openai/gpt-6-luna` for profile analysis and job extraction, and TypeSafe Jev for matching decisions, all through OpenRouter. The plan selects `typesafe/jev-1.13` as the initial pinned Jev version, subject to current availability/contract verification; this version is an implementation default, while the model family is the user's choice. No model-weight training is requested.
+
+The owner reports a private key in ignored `.env` and explicitly approved a cumulative **US$1 / 60-inference-request ceiling, whichever comes first**, including probes, retries and repairs. The key was not read and no live request was sent during planning. [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) is the active continuation plan. The deployment guide and `@preset/job-finder` work are deferred until explicitly requested. This update supersedes the deployment-first ordering and unset-model statements below for this local validation effort; remaining deployment requirements are unchanged.
+
 ## Deployment continuation update — 2026-10-08
 
 The owner will move continuation to the deployment environment, use a local LLM as the development agent, supply an OpenRouter API key privately, and create `@preset/job-finder` for application LLM testing. This supersedes the earlier statement that the initial test model reference is entirely unset. Keep profile_analysis, job_extraction and job_matching independently configurable; all may initially use the same preset. The development agent's local model does not replace OpenRouter in the application. Underlying preset models are selected by the owner in OpenRouter.

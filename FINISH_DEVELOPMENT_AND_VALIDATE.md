@@ -1,5 +1,7 @@
 # Finish development and validate on the deployment host
 
+> **Execution gate — 2026-10-09:** Follow this deployment-host plan only when the user explicitly asks to execute it. The current work is validation in the existing development environment under [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md). The deployment plan below is preserved for later; it does not authorize starting deployment or its remaining tasks now.
+
 Prepared: 2026-10-08. Inspected source baseline: `2e5a02b`, following `799a836` and `ccae444`, plus the current uncommitted progress record. This guide is an execution plan, not evidence that the remaining work has passed.
 
 ## 1. Mission and reading order
