@@ -13,6 +13,12 @@ Intake findings: `backend/uv.lock` (390 `resolved` entries) and `frontend/packag
 Route decision before any install attempt: public PyPI for backend locks and uv, and public npm registry for the frontend lock, both with TLS verification enabled. Reachability was checked with HEAD requests only: pypi.org, registry.npmjs.org and openrouter.ai returned HTTP 200; registry-1.docker.io returned 401 (reachable, unauthenticated). No certificate, proxy or registry trust change is planned. Dependency failures on these routes stop the affected setup path.
 
 Next: provision a project-local uv 0.12.23 under ignored `.tools/`, regenerate locks for the public registries, review the diff, then frozen installs and the Docker builds.
+## Live-validation ledger checkpoint — 2026-10-09
+
+Added `backend/app/ai/run_ledger.py`: a persistent cumulative admission ledger (60 requests / US$1, whichever first). It reserves each call's bound before dispatch, holds unresolved cost, and survives process restarts. Added `backend/tests/test_run_ledger.py` (5 tests: request cap, held-spend cap, unknown-cost persistence across restart, known-cost release, invalid-cost rejection). Ran them through `scripts/test-backend.py` against the disposable test database: 5 passed, exit 0. No inference request, key read, or paid call occurred.
+
+Not yet done: wiring the ledger into `provider.infer`; the Phase A launcher with the temporary owner-only key-file bridge; Phase B offline harness; Luna/Jev contract checks. The ledger is not yet enforced on any live path. Next action: wire admission into the infer path with offline tests, then build the launcher, then proceed to the Phase A Gate.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 
