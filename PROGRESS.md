@@ -57,6 +57,8 @@ Gate B status: mocked tests pass for both transports and the shared budget/state
 
 Next: Phase C — bounded live connectivity and schema checks through the launcher (at most 6 successful probes, up to 4 further attempts for diagnosis, inside the cumulative 60/US$1 cap), including the Jev `data_collection=deny` enforcement probe.
 
+Advisory review fix (same day): an advisor-model review correctly flagged that `dispatch_decisions` returned the adapter's `interpret` result without running the domain `validate`/`category` enforcement the chat path applies — production Decisions matching would have bypassed evidence validation, and the unit tests masked it by calling `validate` manually. Fixed inside `matching.decisions_adapter.interpret`: it now runs the same `validate(result, preferences, spans)` and `category(result, preferences)` before returning, so a Decisions outcome that fails domain validation terminates with `ai_schema`, retains the paid attempt, and never marks the call succeeded. Added the recommended end-to-end MockTransport test: `assess` over a decisions revision whose answer selects `job:title` instead of the required `job:description` is rejected with billing retained. Full suite: 307 passed, exit 0; ruff and strict mypy clean.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 

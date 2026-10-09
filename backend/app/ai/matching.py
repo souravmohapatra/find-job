@@ -241,7 +241,7 @@ def decisions_adapter(
                     comparable=True,
                 )
             )
-        return Assessment(
+        result = Assessment(
             primary_function=lookup[primary][:300],
             relation=relation if relation != "insufficient" else "unclear",
             function_evidence=function_evidence,
@@ -255,6 +255,11 @@ def decisions_adapter(
             domain_status="unknown",
             important_unknowns=True,
         )
+        # The same domain validation and category derivation the chat path enforces;
+        # a Decisions outcome never skips evidence validation.
+        validate(result, preferences, spans)
+        category(result, preferences)
+        return result
 
     return DecisionsTask(
         state=task_input(facts, preferences, posting),

@@ -838,3 +838,33 @@ def test_decisions_protocol_restricted_to_matching(
         "config": {"model": "typesafe/jev-1.13", "protocol": "decisions"},
     }
     assert client.patch("/api/v1/settings/ai", headers=headers, json=allowed).status_code == 200
+
+
+def test_assess_decisions_enforces_domain_validation_end_to_end(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.synthetic_matching import FACTS, POSTINGS, PREFERENCES
+
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    # The selection picks job duties evidence, but not job:description: the domain
+    # validation the chat path enforces must reject it here too, with billing retained.
+    transport["responses"] = [
+        decision_response(
+            {
+                "primary_function": {"type": "choice", "choice": "job:title"},
+                "relation": {"type": "choice", "choice": "aligned"},
+                "relevance_band": {"type": "score", "score": 2.0},
+                "plausible_connection": {"type": "noul", "noul": 0.9},
+            }
+        )
+    ]
+    from app.ai.matching import assess
+
+    with pytest.raises(OperationError) as raised:
+        assess(FACTS, PREFERENCES, POSTINGS[0], identifier, None)
+    assert raised.value.code == "ai_schema"
+    assert len(transport["posts"]) == 1
+    with Session(get_engine()) as db:
+        call = db.scalar(select(InferenceCall))
+        assert call and call.state == "invalid" and call.reported_usd == Decimal("0.00002")
