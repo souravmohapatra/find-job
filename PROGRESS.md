@@ -29,6 +29,18 @@ Blocker decisions confirmed by the owner: (1) I may create the temporary key bri
 
 Next: build the Phase A launcher (offline harness, temporary key bridge, `--execute-live` gate), then the Phase A gate checks.
 
+## Phase A launcher checkpoint — 2026-10-09
+
+Added `scripts/validate-live-api.py`, the development-only Phase A launcher (offline by default; `--execute-live` gates live-mode preparation). Default run: verifies `.env`/`.data`/`.secrets` are git-ignored (metadata only), parses `OPENROUTER_KEY` from `.env` with a line parser (no interpolation, no shell, value never printed), reconciles the persistent run ledger, demonstrates the Gate A refusals (request cap, in-flight spend cap, persistence across restart — on per-run throwaway ledgers, removed after), verifies the test Postgres listener is loopback-only on 127.0.0.1:55439, provisions a dedicated `jobfinder_test_live_api_<run-id>` database in the compose.test.yaml container (idempotent for reruns), applies migrations + queue schema + synthetic owner via the existing alembic/`bootstrap_queue`/`create_owner` helpers, caps the app's daily AI limits to the remaining cumulative allowance, and verifies process settings (development, live AI, mocked search/notifications, no mock fixtures, no fetcher URL). Run metadata is saved under ignored `.data/` with no secrets.
+
+`--execute-live` additionally creates this run's temporary key bridge under `.secrets/live-api-<run-id>/` (dir 0700, file 0600, exclusive creation) before the first application import — required because the settings singleton caches paths at first use — verifies key availability through `provider.key_available()`, performs one authenticated metadata GET of the key's spending backstop (tracked separately in run metadata), and removes only this run's bridge on orderly shutdown (verified: no leftovers, including on failure paths).
+
+Observed: dry-run exit 0; same-run-id rerun exit 0 (idempotent); `--execute-live` exit 0 with key backstop `usage=0, limit=5` (provider-side $5 backstop, consistent with zero spend). Key value, database URL never printed. No billable request: inference attempts 0, known spend US$0, held US$0; metadata attempts 1. `ruff check` and `ruff format --check` pass on the script.
+
+Gate A status: the offline-refusal, disposable-state, process-settings and persistence criteria are demonstrated by the launcher runs above. Not yet claimed: Gate A sign-off awaits the Phase B mocked-transport coverage and the Phase C probe step per the plan ordering.
+
+Next: Phase B — implement the Jev Decisions adapter at the task boundary with deterministic MockTransport coverage for both adapters per the Phase B table, then Phase C live probes.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 
