@@ -18,7 +18,7 @@ from app.ai import provider
 from app.ai.contracts import TaskConfig
 from app.ai.decisions import ChoiceAnswer, NoulAnswer, ScoreAnswer
 from app.ai.models import AiLimitsRow, InferenceCall, TaskRevision
-from app.ai.run_ledger import TOTAL_REQUESTS, RunLedger
+from app.ai.run_ledger import TOTAL_REQUESTS, BudgetRefused, RunLedger
 from app.ai.tasks import Probe, reconcile_call, validate_task
 from app.config import get_settings
 from app.db import get_engine
@@ -640,6 +640,7 @@ def test_decisions_probe_contract_versioned_model_and_ledger(
 ) -> None:
     identifier = decision_configuration()
     monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
     transport["responses"] = [decision_response()]
     validate_task("job_matching", identifier, None)
     assert transport["urls"] == ["https://openrouter.ai/api/alpha/decisions"]
@@ -661,6 +662,7 @@ def test_decisions_typed_contract_errors_are_terminal_without_repair(
     transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
     scenarios = [
         {},
         {"probe": {"type": "choice", "choice": "bogus"}},
@@ -692,6 +694,7 @@ def test_decisions_unknown_model_retains_billing_without_repair(
 ) -> None:
     identifier = decision_configuration()
     monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
     transport["responses"] = [decision_response(model="typesafe/other-1")]
     with pytest.raises(OperationError) as raised:
         validate_task("job_matching", identifier, None)
@@ -706,6 +709,7 @@ def test_decisions_missing_cost_blocks_and_holds(
 ) -> None:
     identifier = decision_configuration()
     monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
     transport["responses"] = [decision_response(usage={"input_tokens": 10, "output_tokens": 5})]
     with pytest.raises(OperationError) as raised:
         validate_task("job_matching", identifier, None)
@@ -721,6 +725,7 @@ def test_decisions_transport_failure_sends_no_duplicate(
 ) -> None:
     identifier = decision_configuration()
     monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
     transport["responses"] = [httpx.ConnectError("synthetic failure")]
     with pytest.raises(OperationError) as raised:
         validate_task("job_matching", identifier, None)
@@ -735,6 +740,7 @@ def test_decisions_rate_limit_persists_cooldown(
 ) -> None:
     identifier = decision_configuration()
     monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
     transport["responses"] = [httpx.Response(429, headers={"Retry-After": "600"})]
     with pytest.raises(OperationError):
         validate_task("job_matching", identifier, None)
@@ -774,6 +780,13 @@ def test_matching_decisions_adapter_builds_validated_assessment() -> None:
         }
     )
     assert unclear.relation == "unclear" and unclear.relevance_score is None
+    duties_unknown = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+        {
+            **answers,
+            "primary_function": ChoiceAnswer(choice="insufficient"),
+        }
+    )
+    assert duties_unknown.relation == "unclear" and duties_unknown.relevance_score is None
     with pytest.raises(ValueError):
         decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
             {**answers, "primary_function": ChoiceAnswer(choice="preference:desired_roles")}
@@ -847,6 +860,7 @@ def test_assess_decisions_enforces_domain_validation_end_to_end(
 
     identifier = decision_configuration()
     monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
     # The selection picks job duties evidence, but not job:description: the domain
     # validation the chat path enforces must reject it here too, with billing retained.
     transport["responses"] = [
@@ -868,3 +882,54 @@ def test_assess_decisions_enforces_domain_validation_end_to_end(
     with Session(get_engine()) as db:
         call = db.scalar(select(InferenceCall))
         assert call and call.state == "invalid" and call.reported_usd == Decimal("0.00002")
+
+
+def test_decisions_live_dispatch_blocked_by_default(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [decision_response()]
+    with pytest.raises(OperationError) as raised:
+        validate_task("job_matching", identifier, None)
+    assert raised.value.code == "ai_decisions_blocked"
+    assert transport["posts"] == []
+    with Session(get_engine()) as db:
+        assert db.scalar(select(InferenceCall)) is None
+
+
+def test_decisions_cumulative_cap_refuses_before_dispatch(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = decision_configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
+    ledger = RunLedger(get_settings().live_ledger_path)
+    for index in range(TOTAL_REQUESTS):
+        ledger.admit(f"prefill-{index}", Decimal("0.001"))
+        ledger.settle(f"prefill-{index}", Decimal(0))
+    transport["responses"] = [decision_response()]
+    with pytest.raises(OperationError) as raised:
+        validate_task("job_matching", identifier, None)
+    assert raised.value.code == "ai_budget"
+    assert transport["posts"] == []
+
+
+def test_ledger_concurrent_admission_cannot_overcount(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.ai.run_ledger import TOTAL_REQUESTS as cap
+
+    ledger = RunLedger(tmp_path / "concurrency.json")
+
+    def admit(index: int) -> str:
+        try:
+            ledger.admit(f"concurrent-{index}", Decimal("0.001"))
+            return "admitted"
+        except BudgetRefused:
+            return "refused"
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        outcomes = list(pool.map(admit, range(cap + 10)))
+    assert outcomes.count("admitted") == cap
+    assert outcomes.count("refused") == 10

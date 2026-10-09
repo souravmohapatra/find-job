@@ -76,7 +76,7 @@ def provision_database(run_id: str) -> None:
     if not re.fullmatch(r"[a-z0-9_]+", run_id):
         raise fail("run id must be lowercase alphanumeric/underscore")
     name = f"jobfinder_test_live_api_{run_id}"
-    subprocess.run(
+    result = subprocess.run(
         [
             "docker",
             "compose",
@@ -99,8 +99,16 @@ def provision_database(run_id: str) -> None:
         capture_output=True,
         text=True,
         check=False,
-    )  # Existing databases from an interrupted run are reused as-is.
-    print(f"database ready: {name} (name only; URL never printed)")
+    )
+    if result.returncode != 0:
+        if "already exists" not in result.stderr:
+            raise fail(
+                f"creating the disposable database failed (exit {result.returncode});"
+                " original error preserved in the diagnostic log, not printed here"
+            )
+        print(f"database exists from an interrupted run; reusing: {name}")
+    else:
+        print(f"database ready: {name} (name only; URL never printed)")
 
 
 def initialize_schema_and_owner(limits_calls: int, limits_usd: Decimal) -> None:
@@ -191,10 +199,12 @@ def build_key_bridge(run_id: str) -> tuple[Path, str]:
     bridge = run_dir / "openrouter_api_key"
     try:
         descriptor = os.open(bridge, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as error:
-        raise fail(f"bridge file {bridge} already exists") from error
-    with os.fdopen(descriptor, "w") as stream:
-        stream.write(key)
+        with os.fdopen(descriptor, "w") as stream:
+            stream.write(key)
+    except BaseException:
+        # A failed write must not leave a partial secret outside cleanup ownership.
+        remove_key_bridge(run_dir)
+        raise
     return bridge, run_dir
 
 
@@ -225,9 +235,21 @@ def check_spending_backstop(metadata_state: dict[str, int]) -> None:
     if response.status_code != 200:
         raise fail(f"key metadata check returned HTTP {response.status_code}; diagnose offline")
     data = response.json().get("data", {})
-    usage = data.get("usage")
-    limit = data.get("limit")
-    print(f"key backstop: usage={usage} limit={limit if limit is not None else 'unset'}")
+    usage, limit = data.get("usage"), data.get("limit")
+    if not isinstance(usage, (int, float)) or isinstance(usage, bool) or usage < 0:
+        raise fail("key metadata has no usable usage figure; diagnose offline")
+    if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit <= 0:
+        raise fail(
+            "the key has no positive provider-side spending backstop; the cumulative"
+            " US$1 cap cannot be enforced provider-side. Set a key limit at the"
+            " provider (dashboard, not API) at or below the remaining allowance first."
+        )
+    print(f"key backstop: usage={usage} limit={limit}")
+    if float(limit) > 1.0:
+        print(
+            f"WARNING: the provider-side limit (${limit}) exceeds the approved US$1"
+            " ceiling; the owner should lower the key limit before billable probes."
+        )
 
 
 def save_run_metadata(path: Path, metadata: dict[str, object]) -> None:
@@ -242,6 +264,11 @@ def main() -> int:
     parser.add_argument("--run-id", default=time.strftime("%Y%m%d_%H%M%S"))
     args = parser.parse_args()
     run_id = args.run_id
+    # Validate before any path construction: the id feeds directories and the
+    # database name, and traversal components could escape both.
+    if not re.fullmatch(r"[a-z0-9_]+", run_id):
+        print("BLOCKED: run id must be lowercase alphanumeric/underscore", file=sys.stderr)
+        return 2
 
     ensure_ignored(".env")
     ensure_ignored(".data")

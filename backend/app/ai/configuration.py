@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from app.ai.contracts import AiLimits, TaskKey
-from app.ai.models import AiLimitsRow, TaskRevision
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.ai.contracts import AiLimits, TaskKey
+from app.ai.models import AiLimitsRow, TaskRevision
 
 
 def latest(db: Session, task: TaskKey) -> TaskRevision | None:

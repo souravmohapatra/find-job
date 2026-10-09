@@ -5,6 +5,7 @@ from threading import Lock
 from typing import Any
 
 import httpx
+
 from app.ai import provider
 from app.config import get_settings
 from app.services.operations import OperationError

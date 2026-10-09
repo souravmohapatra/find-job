@@ -6,8 +6,9 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from app.domain.profile import Contract
 from pydantic import Field, field_validator, model_validator
+
+from app.domain.profile import Contract
 
 TaskKey = Literal["profile_analysis", "job_extraction", "job_matching"]
 TASKS: tuple[TaskKey, ...] = ("profile_analysis", "job_extraction", "job_matching")

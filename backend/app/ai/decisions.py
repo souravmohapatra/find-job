@@ -86,7 +86,9 @@ def parse_response(data: object) -> DecisionsResponse:
         if not isinstance(raw, dict):
             raise ValueError(f"answer {key!r} must be an object")
         for field in ("noul", "score", "confidence"):
-            if field in raw:
+            # Optional nullable metadata: explicit null behaves like absence; a
+            # non-null value must still be a finite number.
+            if raw.get(field) is not None:
                 _finite_number(raw[field], f"answer {key!r} {field}")
         probabilities = raw.get("probabilities")
         if probabilities is not None:
@@ -155,7 +157,31 @@ def normalize(
 def request_body(
     model: str, state: Any, questions: dict[str, DecisionsQuestion], provider: dict[str, Any]
 ) -> dict[str, Any]:
-    """Build the Decisions request. Only documented Decisions fields are sent."""
+    """Validate the question specification and build the request.
+
+    Invalid specifications fail locally before any paid request: criteria are
+    type-specific (choice: labelled rubrics; noul: true/false rubrics; score: an
+    ordered list of at least two levels) and every allowed-answer set is nonempty.
+    """
+    for key, question in questions.items():
+        criteria = question.criteria
+        if question.type == "score":
+            if not isinstance(criteria, list) or len(criteria) < 2:
+                raise ValueError(f"score question {key!r} needs at least two ordered levels")
+            if any(not isinstance(level, str) or not level.strip() for level in criteria):
+                raise ValueError(f"score question {key!r} has empty levels")
+        else:
+            if not isinstance(criteria, dict) or not criteria:
+                raise ValueError(
+                    f"{question.type} question {key!r} needs labelled criteria"
+                )
+            if any(
+                not isinstance(label, str) or not label or not isinstance(rubric, str)
+                for label, rubric in criteria.items()
+            ):
+                raise ValueError(f"{question.type} question {key!r} has invalid criteria")
+            if question.type == "noul" and set(criteria) != {"true", "false"}:
+                raise ValueError(f"noul question {key!r} needs true/false criteria")
     return {
         "model": model,
         "state": state,

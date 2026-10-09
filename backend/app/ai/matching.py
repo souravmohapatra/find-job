@@ -191,12 +191,24 @@ def decisions_adapter(
         primary_answer = answers["primary_function"]
         assert isinstance(primary_answer, ChoiceAnswer)
         primary = primary_answer.choice
+        # A contract-valid "duties unknown" answer: cite the duties span mechanically
+        # for the evidence contract and treat the relation as unclear, never as a
+        # terminal failure of an expected answer.
+        duties_unknown = primary == "insufficient"
+        if duties_unknown:
+            primary = "job:description"
         if primary not in lookup or not primary.startswith("job:"):
             raise ValueError("primary_function must select a job span or insufficient")
         relation_answer = answers["relation"]
         assert isinstance(relation_answer, ChoiceAnswer)
         relation = relation_answer.choice
-        unclear = relation in {"unclear", "insufficient"}
+        unclear = duties_unknown or relation in {"unclear", "insufficient"}
+        band_answer = answers["relevance_band"]
+        assert isinstance(band_answer, ScoreAnswer)
+        if relation == "unrelated" and band_answer.score >= 2:
+            raise ValueError("relation unrelated contradicts the selected relevance band")
+        if relation in {"aligned", "adjacent"} and band_answer.score < 1:
+            raise ValueError("relation aligned/adjacent contradicts the selected relevance band")
         function_evidence = [cite(primary)]
         if not unclear:
             for name in ("desired_roles", "excluded_functions"):
@@ -204,10 +216,7 @@ def decisions_adapter(
                     function_evidence.append(cite(f"preference:{name}"))
             if not any(item.span_id.startswith("preference:") for item in function_evidence):
                 raise ValueError("relation needs citable desired or excluded function spans")
-        band_answer = answers["relevance_band"]
-        assert isinstance(band_answer, ScoreAnswer)
-        band = band_answer.score
-        relevance_score = None if unclear else BAND_SCORES[int(round(band))]
+        relevance_score = None if unclear else BAND_SCORES[int(round(band_answer.score))]
         connection_answer = answers["plausible_connection"]
         assert isinstance(connection_answer, NoulAnswer)
         plausible = connection_answer.noul >= 0.5
@@ -243,7 +252,7 @@ def decisions_adapter(
             )
         result = Assessment(
             primary_function=lookup[primary][:300],
-            relation=relation if relation != "insufficient" else "unclear",
+            relation="unclear" if unclear else relation,
             function_evidence=function_evidence,
             relevance_score=relevance_score,
             score_evidence=[cite(primary), cite("profile:experience")]

@@ -4,10 +4,11 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from pydantic import BaseModel
+
 from app.ai.contracts import TaskKey
 from app.config import get_settings
 from app.services.operations import OperationError
-from pydantic import BaseModel
 
 
 def replay[T: BaseModel](

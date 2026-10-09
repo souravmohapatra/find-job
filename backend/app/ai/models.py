@@ -5,11 +5,12 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from app.db import Base
-from app.profile_models import now
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db import Base
+from app.profile_models import now
 
 
 class AiLimitsRow(Base):

@@ -435,9 +435,16 @@ def dispatch_decisions(
 ) -> Any:
     """Single-attempt Decisions dispatch through the shared reservation and ledger gates.
 
-    Typed-contract errors are terminal: the protocol has no chat-style repair, so a
+    typed-contract errors are terminal: the protocol has no chat-style repair, so a
     failure retains the paid attempt and stops instead of re-sending.
     """
+    if not get_settings().decisions_live_enabled:
+        raise OperationError(
+            "ai_decisions_blocked",
+            "Live Decisions dispatch is disabled: the protocol has no demonstrated "
+            "per-request billing bound. Review the validation plan with the owner.",
+            blocked=True,
+        )
     assert config.model
     bound = (
         len(
@@ -477,13 +484,20 @@ def dispatch_decisions(
     with client() as http:
         call_id = reserve(config_id, task, config, operation_id, prompt_version, schema_version)
         if ledger is not None:
+            # The Decisions protocol has no provider-side output-token bound (no
+            # max_tokens field), so unlike chat the estimate is not a demonstrated
+            # ceiling. Reserving the entire remaining allowance prevents multi-call
+            # under-counting but does NOT bound a single response's actual charge;
+            # live Decisions dispatch stays blocked pending an owner decision on a
+            # demonstrated per-request bound (see PROGRESS.md).
             try:
-                ledger.admit(str(call_id), estimate_bound(config))
-            except BudgetRefused as refused:
+                ledger.admit(str(call_id), ledger.remaining_usd())
+            except (BudgetRefused, ValueError) as refused:
+                reason = getattr(refused, "reason", "spend_limit")
                 finish(
                     call_id,
                     state="failed",
-                    error_code=f"ai_budget_{refused.reason}",
+                    error_code=f"ai_budget_{reason}",
                     response={"usage": {"cost": 0}},
                     cost_source="rejected",
                 )

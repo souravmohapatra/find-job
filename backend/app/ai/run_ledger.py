@@ -42,9 +42,27 @@ class RunLedger:
 
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():
-            return {"attempts": 0, "known_usd": "0", "held": {}}
+            if self.path.with_name(self.path.name + ".initialized").exists():
+                # The marker persists after first initialization: a missing ledger
+                # beside it is lost accounting, not a fresh allowance. Fail closed.
+                raise RuntimeError(
+                    f"The run ledger file {self.path} disappeared after initialization;"
+                    " reconcile the true request and spend state before further dispatch."
+                )
+            state = {"attempts": 0, "known_usd": "0", "held": {}}
+            self._write(state)
+            self._write_marker()
+            return state
         state: dict[str, Any] = json.loads(self.path.read_text())
         return state
+
+    def _write_marker(self) -> None:
+        marker = self.path.with_name(self.path.name + ".initialized")
+        descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w") as handle:
+            handle.write("initialized\n")
+            handle.flush()
+            os.fsync(handle.fileno())
 
     def _write(self, state: dict[str, Any]) -> None:
         temporary = self.path.with_name(self.path.name + ".tmp")
@@ -54,6 +72,19 @@ class RunLedger:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        # Durability for the hard cap: the rename itself must survive a host crash.
+        directory = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+    def remaining_usd(self) -> Decimal:
+        """Spend that admitted calls have not yet reserved or reported."""
+        with self._locked():
+            state = self._read()
+            held = sum((Decimal(value) for value in state["held"].values()), Decimal(0))
+            return TOTAL_USD - Decimal(state["known_usd"]) - held
 
     def admit(self, call_id: str, reserve_usd: Decimal) -> None:
         """Count one outbound attempt and hold its bound, or refuse before any I/O."""

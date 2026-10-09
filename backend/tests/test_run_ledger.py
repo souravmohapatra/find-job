@@ -60,6 +60,16 @@ def test_repeated_settlements_are_idempotent(tmp_path):
     assert summary["unresolved_calls"] == []
 
 
+def test_missing_ledger_after_initialization_fails_closed(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = RunLedger(path)
+    ledger.admit("a", Decimal("0.01"))
+    ledger.settle("a", Decimal("0"))
+    path.unlink()
+    with pytest.raises(RuntimeError, match="disappeared"):
+        ledger.summary()
+
+
 def test_non_finite_or_negative_costs_are_rejected(tmp_path):
     ledger = RunLedger(tmp_path / "ledger.json")
     ledger.admit("bad", Decimal("0.10"))

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     openrouter_key_file: Path = Path("/run/secrets/openrouter_api_key")
     # Cumulative admission ledger for bounded live validation; ignored runtime data.
     live_ledger_path: Path = Path(".data/live_run_ledger.json")
+    # The Decisions protocol has no provider-side output bound; live dispatch stays
+    # disabled until a demonstrated per-request billing bound is agreed with the owner.
+    decisions_live_enabled: bool = False
     search_mode: Literal["mock", "live"] = "mock"
     brave_key_file: Path = Path("/run/secrets/brave_api_key")
     search_daily_limit: int = Field(default=300, ge=1, le=10000)
