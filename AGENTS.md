@@ -10,7 +10,7 @@ Read [CONTEXT.md](CONTEXT.md), [PLAN.md](PLAN.md), and [PROGRESS.md](PROGRESS.md
 
 The user grants autonomy over local Git activities: inspect, stage, create local branches, and make local commits when useful within authorized work. Routine local Git actions need no repeated permission. Preserve existing user work; ask before discarding changes or rewriting existing history. Do not push, publish, or modify remotes without explicit authorization. Local Git autonomy does not authorize application implementation, installations, builds, or runtime work outside the requested scope.
 
-The user has authorized implementation, project-local dependency installation, container builds/runs and validation in this development environment. Create local Git commits after successful validation phases. Use mock LLM/search responses by default. The user authorized bounded live OpenRouter validation on 2026-10-09 under [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md), with a cumulative US$1 / 60-inference-request ceiling, whichever comes first. Follow the deployment-host guide only when explicitly requested. The configured npm package proxy is permitted for package operations; do not browse unrelated employer-internal systems. Involve the user for genuine blockers. Do not push or publish.
+The user has authorized implementation, project-local dependency installation, container builds/runs and validation in this development environment. Create local Git commits after successful validation phases. Use mock LLM/search responses by default. The user canceled live OpenRouter validation on this development network on 2026-10-09. Do not resume local live requests or metadata probes. Perform that work only on the intended deployment host under [FINISH_DEVELOPMENT_AND_VALIDATE.md](FINISH_DEVELOPMENT_AND_VALIDATE.md) and its [API validation companion](DEPLOYMENT_API_VALIDATION.md), when assigned there. Preserve the cumulative US$1 / 60-inference-request ceiling, whichever comes first, across hosts and phases. The configured npm package proxy is permitted for package operations; do not browse unrelated employer-internal systems. Involve the user for genuine blockers. Do not push or publish.
 
 ## Dependency failure boundary
 
@@ -33,7 +33,7 @@ The user authorized testing and using a Linux host-network PostgreSQL container 
 - Send a configurable daily summary at 19:00 in the owner's selected timezone, independently of collection frequency.
 - Example companies are development-only; see DEVELOPMENT_EXAMPLES.md.
 - Explain match decisions and uncertainty. Failed collection or assessment must not be represented as no vacancies or no match.
-- All LLM work uses OpenRouter API with independently configurable models per task. Current local validation choices are recorded in LIVE_API_VALIDATION.md; they are not verified production defaults. No local LLM service or GPU requirement. See MATCHING.md for routing and data handling. External search receives company queries, never CV data.
+- All LLM work uses OpenRouter API with independently configurable models per task. Current deployment validation choices are recorded in DEPLOYMENT_API_VALIDATION.md; they are not verified production defaults. No local LLM service or GPU requirement. See MATCHING.md for routing and data handling. External search receives company queries, never CV data.
 
 ## Context maintenance
 

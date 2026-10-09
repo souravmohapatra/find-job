@@ -1,6 +1,6 @@
 # Delivery plan
 
-Current priority, 2026-10-09: execute [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) in this development environment when assigned the continuation. Establish the non-AI harness first, then model prompts/parsing and the synthetic integrated journey, using the owner's selected models and approved spending cap. Deployment-host continuation remains deferred until explicitly requested. The earlier host-first/model-deferred statements below are historical for this local effort; full deployment release gates still apply later.
+Current priority, 2026-10-09: the owner canceled live API validation on this development network and moved it to the deployment environment. Start from [FINISH_DEVELOPMENT_AND_VALIDATE.md](FINISH_DEVELOPMENT_AND_VALIDATE.md) when assigned on that host; section 8 uses [DEPLOYMENT_API_VALIDATION.md](DEPLOYMENT_API_VALIDATION.md) for harness-first Luna/Jev testing, then prompts/parsing and the integrated journey. Retain the approved cumulative US$1 / 60-request cap. No further local API probes or trust workarounds are authorized by this handoff. Remaining deployment release gates still apply.
 
 Updated: 2026-10-08. Technical decisions are now authorized and documented. Implementation is active; current evidence and outstanding gates are recorded below.
 

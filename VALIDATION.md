@@ -1,8 +1,12 @@
 # Validation
 
-## 2026-10-09 live-validation planning evidence
+## 2026-10-09 local cancellation and deployment handoff
 
-Prepared [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md) against the current integration code and official public provider documentation. Checked its local links, Markdown fence balance and whitespace; verified that FINISH_DEVELOPMENT_AND_VALIDATE.md differs from its committed body only by the added execution notice. Model choices and the owner's cumulative US$1 / 60-inference-request limit are recorded in the active guidance. No key value was read and no authenticated provider request, dependency operation, application test or live model evaluation ran. All live-plan acceptance gates remain pending; historical test counts below are not fresh results for this work.
+The owner canceled local live validation after a recorded unauthenticated metadata GET failed certificate verification (HTTPX ConnectError, diagnostic exit 2). Inference attempts, known spend and held spend were all zero in that checkpoint. No further OpenRouter call or application test was run during cleanup. The technical plan is now DEPLOYMENT_API_VALIDATION.md, integrated into the parent deployment guide; its live acceptance gates remain pending. The old development host-network workaround is excluded from deployment execution. Cleanup checks passed for all nine changed/new Markdown documents: local links, final newlines, whitespace, balanced fences, retired-filename removal and preserved checkpoint/model preference. Remote master was checked read-only and is an ancestor of the local branch; a normal push is sufficient at that observed state.
+
+## Historical 2026-10-09 live-validation planning evidence
+
+Prepared the original local plan (now retargeted as [DEPLOYMENT_API_VALIDATION.md](DEPLOYMENT_API_VALIDATION.md)) against the current integration code and official public provider documentation. Checked its local links, Markdown fence balance and whitespace; verified that FINISH_DEVELOPMENT_AND_VALIDATE.md differs from its committed body only by the added execution notice. Model choices and the owner's cumulative US$1 / 60-inference-request limit are recorded in the active guidance. No key value was read and no authenticated provider request, dependency operation, application test or live model evaluation ran. All live-plan acceptance gates remain pending; historical test counts below are not fresh results for this work.
 
 ## Current evidence
 

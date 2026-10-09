@@ -1,6 +1,6 @@
 # Finish development and validate on the deployment host
 
-> **Execution gate — 2026-10-09:** Follow this deployment-host plan only when the user explicitly asks to execute it. The current work is validation in the existing development environment under [LIVE_API_VALIDATION.md](LIVE_API_VALIDATION.md). The deployment plan below is preserved for later; it does not authorize starting deployment or its remaining tasks now.
+> **Execution gate — 2026-10-09:** Follow this plan only when the user explicitly assigns execution on the deployment host. Live API validation on the original development network is canceled. Section 8 now uses [DEPLOYMENT_API_VALIDATION.md](DEPLOYMENT_API_VALIDATION.md) for transport-first Luna/Jev testing on this host. This cleanup does not start deployment.
 
 Prepared: 2026-10-08. Inspected source baseline: `2e5a02b`, following `799a836` and `ccae444`, plus the current uncommitted progress record. This guide is an execution plan, not evidence that the remaining work has passed.
 
@@ -20,14 +20,14 @@ Read in this order:
 
 Some documents contain historical summaries that are now stale. Use dated evidence and actual code to reconcile them. Do not treat a stale “pending” paragraph as proof that code is absent, or a passing historical test as proof that the new host works. If a file named in this guide is missing, find its replacement with `rg --files` before inventing new scaffolding.
 
-### New owner direction for this handoff
+### Current owner direction — 2026-10-09
 
-- The owner is moving work to the deployment environment and intends the next agent to finish and validate it.
-- The owner will supply an OpenRouter API key privately and create a preset named `job-finder`.
-- Use **`@preset/job-finder`** for the initial live testing configuration. Keep the three task settings independent even when all use that same preset.
-- Treat supplying the key for this stated testing purpose as permission for a bounded validation run using that preset. It is not permission for unlimited calls, account purchases, unrelated benchmarks or sending private documents without consent.
-- Agree a finite spending/call ceiling before sending paid requests if none has been supplied. A proposed initial ceiling is **USD 1 and 20 billable attempts, whichever is reached first**. This is a proposal, not an existing owner-approved budget. It may need adjustment after inspecting model prices and input sizes. Do not silently increase it.
-- The preset is **not supported by the current application**. Section 8 describes the required implementation. Merely pasting it into Settings will fail.
+- Continue development and live validation on the deployment host; do not resume API probes on the old network.
+- Use `openai/gpt-6-luna` for profile analysis and job extraction, with medium reasoning only after endpoint support is verified; leave temperature unset. Use TypeSafe Jev for matching decisions, initially pinned to `typesafe/jev-1.13` subject to current official availability verification.
+- These explicit model mappings supersede the earlier `@preset/job-finder` direction. Do not implement preset support as a prerequisite or route Jev through chat completions.
+- The approved cumulative ceiling remains **US$1 / 60 inference requests, whichever comes first**, including retries, repairs and probes across hosts/restarts. The canceled local attempt recorded zero inference/spend; reconcile any subsequent activity. This is not a new allowance per host or phase.
+- Provision the OpenRouter key privately on this host; `.env` on the original machine is ignored and does not transfer via Git. Use synthetic documents until the owner separately consents to transmitting real CV data.
+- Follow section 8 and its companion: first harness/transport/accounting, then prompt/parsing quality, then the integrated worker journey. Keep unknown billing, evidence and privacy guards intact.
 
 ## 2. Rules for a reliable continuation
 
@@ -65,10 +65,10 @@ Some documents contain historical summaries that are now stale. Use dated eviden
 | --- | --- | --- |
 | Authentication, CV/profile review, preferences | Local PostgreSQL/API/worker/browser tests | Fresh-host deployment and actual model usefulness |
 | Inventory, discovery, ATS adapters, JSON-LD, selectors | Synthetic parser/transport/database tests; portal journeys | Real company coverage through deployed isolated fetching |
-| Matching/reassessment | Broad policy, stale-version guards, authored worker-to-portal fixture | Live preset support and semantic acceptance |
+| Matching/reassessment | Broad policy, stale-version guards, authored worker-to-portal fixture | Native Jev adapter, live transport and semantic acceptance |
 | Notifications | Scheduling/ledger/retry tests; controls; isolated ntfy ACL/receipt check | Application-worker-to-ntfy delivery and owner device receipt |
 | Frontend | 30 component tests and 11 integration browser journeys in the recorded route-splitting phase | New-host/browser availability and built production-edge journeys |
-| Backend | Recorded full suite reached 287 tests before later standalone operations work | Fresh current suite, new preset/browser changes |
+| Backend | Recorded full suite reached 287 tests before later standalone operations work | Fresh current suite, new provider/browser changes |
 | Compose | Ten service definitions, pinned base images, template checks | Full builds, persistent-volume initialization, standard networking, ingress/isolation |
 | Backups | 21 recovery/retention tests including disposable full data restore; commits `799a836`, `2e5a02b` | Actual deployment snapshot, isolated application restore, timer install/run |
 | Browser fetching | Planned; Python Playwright installation failed before manifest/lock changed | Dependency, browser runtime, rendering implementation and network enforcement |
@@ -115,7 +115,7 @@ Expected foundations: Ubuntu, Docker Engine/Compose v2, Python **3.12** for the 
 | LAN IPv4, LAN subnet, local app hostname | Explicit private binds and client access tests; reserve the address/local DNS |
 | Full tailnet DNS hostname and allowed clients | Tailscale Serve, origins, notification links and access validation |
 | Owner username/password | Created interactively; no seeded production password |
-| OpenRouter key file, preset ready, finite test budget | Private key file; owner creates preset; no preset/account writes by agent |
+| OpenRouter key file and selected Luna/Jev model access | Private key file; cumulative US$1 / 60-call cap already approved; reconcile remaining allowance; no account writes |
 | Permission to submit an actual CV | Start synthetic; CV goes to OpenRouter only after informed owner consent |
 | Brave key and permission for bounded search tests | Optional for first URL-based journey, needed for live name-only discovery |
 | Notification device/client, timezone and topic | Default 19:00; demonstrate the actual client, not just an HTTP receipt |
@@ -274,62 +274,24 @@ Current design binds edge to `LAN_IP:443`, `LAN_IP:8443`, `127.0.0.1:8080` and `
 
 Exit evidence: real HTTPS portal login on each intended access path, no unintended listeners, explicit negative access tests, and owner-approved host configuration recorded without secrets.
 
-## 8. Implement OpenRouter preset support before paid testing
+## 8. Validate OpenRouter transport, then prompts and matching
 
-### 8.1 Verified compatibility gaps
+Follow [DEPLOYMENT_API_VALIDATION.md](DEPLOYMENT_API_VALIDATION.md) on this host. It preserves the detailed technical plan while removing the old-network execution path. Complete host intake, portable dependencies and isolated regression setup first. API tests can use synthetic cached job content while the fetcher remains disabled; production fetching and notification gates still follow in the sections below.
 
-These were observed in the source, not inferred from a failed live call:
+The existing implementation sends every task and validation probe to chat completions, reads a key-only secret file, and assumes chat capability/response formats. Luna uses the generative path. Jev needs its native typed-decisions adapter, a compatible validation probe, verified privacy/pricing/billing behavior, and evidence-backed conversion into the existing matching policy. No live model acceptance or Jev implementation is established by this guide.
 
-| Location | Current behaviour that needs attention |
-| --- | --- |
-| `backend/app/ai/contracts.py`, `TaskConfig.model_id` | Requires an explicit `author/model` pattern and rejects the `@` prefix |
-| `backend/app/ai/provider.py`, `endpoint_tags` | Looks up `models/{model}/endpoints` for every selected identifier; a preset is not a public model slug |
-| `provider.py`, `infer` | Sends `model`, schema, messages and provider restrictions; later only accepts response model equal to configured IDs/fallbacks |
-| `backend/app/ai/catalog.py` | Public model catalog is not a catalog of the owner's private presets |
-| `backend/app/ai/models.py` / task revisions / matching identities | Need to distinguish requested preset from resolved concrete model and preset changes |
-| `frontend/src/features/settings/ai.tsx` | Help text, input constraints, errors and persistence must accept and explain preset use |
+Required order:
 
-OpenRouter documents `model: "@preset/job-finder"` as a request form. Its preset read interface exposes the designated version. Verify the current HTTP API shape before implementation; do not invent an endpoint or require an SDK replacement. Official references checked during preparation: [preset usage](https://openrouter.ai/docs/guides/features/presets), [preset read operations](https://openrouter.ai/docs/client-sdks/python/api-reference/presets). This guide's implementation contract below is project design guidance, not a claim that the current code already implements it.
+1. Isolate credentials, synthetic data, queues and cumulative budget; do not attach live workers to production or old test data.
+2. Validate serialization, responses, errors, reservations, retries, unknown billing and stale-operation handling offline.
+3. Prove both live API contracts with bounded synthetic probes through application accounting.
+4. Validate Jev judgments, exact evidence, deterministic explanations and broad-shortlist policy; do not substitute a binary good/bad answer or a confidence probability for relevance.
+5. Tune prompts/questions using the small synthetic set, then prove real API/queue/worker/portal integration.
+6. Record request counts, reported/held spend and remaining acceptance gaps; stop the validation workers before proceeding to later phases.
 
-### 8.2 Minimum implementation contract
+The companion contains exact code entry points, regression commands, acceptance cases and stop conditions. Reuse its evidence for section 11.4; do not repeat paid calls merely because both sections mention semantic validation. Later source-driven assessments also consume the same remaining approved allowance. If broader release/performance tests need more budget, ask before spending more.
 
-1. Accept a tightly validated `@preset/<slug>` as well as existing explicit model IDs. For the initial owner configuration use exactly `@preset/job-finder`. Do not accept arbitrary URLs, path traversal or any `@...` string.
-2. Keep `profile_analysis`, `job_extraction`, `job_matching` separate, with their own revisions, prompts, schemas and limits. All may initially point to the same preset. Do not replace them with one global hardcoded model.
-3. Resolve preset metadata read-only, with the owner's API key, using the documented API. Capture designated version and supported concrete model list where available. Do not create/update the preset; the owner manages it.
-4. Use concrete models for endpoint capability/pricing checks; never query a model endpoint using the literal preset alias. If the API/key cannot expose enough metadata, stop with a specific configuration error and ask for the missing preset details. Do not silently skip capability checks or substitute another model.
-5. Preserve the owner's preset reference on the completion request. Avoid silently overriding its model choice with a hardcoded concrete model. Define which settings remain app-enforced: task messages/schema, token limits, privacy restrictions, price ceilings and non-streaming mode. Test effective routing, including nested provider settings; do not assume undocumented merge semantics.
-6. For initial validation, ask the owner to keep the preset fixed, text-only, with explicit structured-output-capable model(s) and no search/tool/plugin side effects or overriding task prompts. Start without a second app-level fallback list for a preset. Supporting every possible preset composition is not required.
-7. Preserve `require_parameters`, data-collection restrictions, configured ZDR, token ceilings, budget reservation and unresolved-cost blocking. Restrict requested providers to compatible permitted endpoints without accidentally broadening preset restrictions. If no endpoint satisfies both configurations, fail clearly; do not disable the restrictions.
-8. Validate a concrete returned model against the resolved permitted model set. A concrete response ID is expected to differ from the alias; that alone is not a schema error. Keep a strong unexpected-model check for direct model IDs and for resolved preset models.
-9. Record the requested alias, resolved preset identity/version or non-secret fingerprint, actual returned model/provider, generation ID, usage and reported cost. Do not log preset prompts or raw CV/response content. Extend the existing records minimally if necessary; use a migration for persistent schema changes.
-10. Treat a changed preset as a configuration change for reproducibility and stale assessment handling. A small approach is to capture the version/fingerprint on validation and block dispatch if it changes until revalidation captures a new effective revision. Recheck currentness at result commit. Do not let old results silently become “current” under a changed preset. Do not build a new preset-management UI.
-11. If current metadata cannot guarantee the preset stayed fixed during a request, explicitly record that limitation and avoid declaring reproducibility. Recheck version around calls; an ambiguous result must not become a valid current assessment automatically. Billed calls still need accounting.
-12. Retain strict local schema and evidence checks. Existing code can make a second billable attempt after invalid output: count repair attempts against both the call and spending limits. Do not retry indefinitely.
-
-Do not solve preset support by merely relaxing the regex, accepting any returned model, skipping accounting, or faking a catalog entry. Do not copy the preset's private configuration into tracked fixtures.
-
-`InferenceCall` already has `requested_model`, `returned_model`, provider, generation and cost fields. Reuse those fields; do not add duplicate alias/actual-model columns. The missing piece is effective preset metadata/currentness, not an entirely new accounting subsystem.
-
-### 8.3 Required mocked tests before real calls
-
-- Valid alias saves/reloads independently for all three tasks; malformed aliases rejected.
-- Existing direct model ID validation and routing still work.
-- Preset metadata success, not found, unauthorized, malformed and unavailable states.
-- Metadata uses concrete model endpoint checks; no `models/@preset/.../endpoints` request.
-- Alias retained in completion payload; correct task messages, strict schema, privacy and spending settings remain present.
-- Compatible concrete response accepted; model outside permitted set rejected and billed cost retained.
-- Preset version changes invalidate validation/currentness; stale in-flight completions cannot overwrite current assessments.
-- Missing structured-output capability, excess price, timeout, missing cost and invalid evidence remain honest failures.
-- UI handles preset values not present in the public model catalog; helpful validation errors and loading states.
-- Regenerate API types if contracts change, then run affected backend/UI tests. Finish with the full backend suite for this cross-cutting provider change.
-
-### 8.4 First live check
-
-After the owner supplies the key/preset and finite budget, mount the key privately and set `INTEGRATION_MODE=live` for the relevant services. Restart/recreate them deliberately so cached settings change. Keep companies paused or absent and notifications disabled while checking the model; do not unleash an inventory-wide reassessment as a connectivity probe.
-
-Set all three task mappings through the authenticated Settings UI/API to `@preset/job-finder`, then validate them with the existing synthetic probe. Success means real provider response, strict schema acceptance and recorded cost/actual model, not `mock_only`. Check account activity privately if billing is unclear. Never mark an uncertain charge zero without verification.
-
-Stop for missing key/preset, authentication/credits problems, incompatible model/schema, unbounded routing, exhausted budget or unknown cost. Fix configuration or code based on evidence; no silent model changes. The current defaults (500 calls/day and USD 5/day) are not the owner's testing budget. Ensure queued retries and both workers cannot exceed the agreed cap.
+Preset support is deferred unless the owner explicitly requests it again. Do not spend this phase relaxing alias validators or adding preset-management features. Preserve task independence, strong returned-model validation, privacy restrictions and the existing usage ledger for the selected models.
 
 ## 9. Implement and prove fetching isolation before enabling arbitrary URLs
 
@@ -421,7 +383,7 @@ Use the synthetic no-careers-page fixture for misleading employer links and unre
 
 ### 11.4 Live profile/extraction/matching quality
 
-Start with synthetic CVs from at least two professions, including ambiguous/overlapping dates. Use the preset through actual app task queues and inspect extracted facts before activation. Ask the owner before sending a real CV; local parsing success is not consent for remote submission.
+Start with synthetic CVs from at least two professions, including ambiguous/overlapping dates. Use the selected task models through actual app task queues and inspect extracted facts before activation. Ask the owner before sending a real CV; local parsing success is not consent for remote submission.
 
 Use approximately 12 synthetic role/profile pairs as described in VALIDATION.md/DEVELOPMENT_EXAMPLES.md. Include clear fit, partial fit around the broad threshold, a new sector, unclear evidence, strategy analyst versus data analyst, legal practice, explicit must-have conflict and missing facts. Repeat function boundaries for a data/legal profile so these are not global exclusions.
 
@@ -432,9 +394,9 @@ Expected:
 - Relevant and Possible both enter the shortlist; rejected jobs remain in All jobs.
 - Updated preferences create new current assessments or visibly stale/pending state; old results cannot overwrite new profile/model policy versions.
 - Generic extraction does not invent employers, posting URLs or open status from ambiguous content.
-- All task calls show the requested preset, actual model and cost. No secret/raw content appears in logs/UI evidence.
+- All task calls show the requested model, actual model/protocol and cost. No secret/raw content appears in logs/UI evidence.
 
-Investigate a material contradiction once with a small targeted fixture; do not start an open-ended tuning campaign or change the preset yourself. Model choice changes belong to the owner. Keep the preset fixed during the recorded run and revalidate when changed.
+Reuse the semantic evaluation from section 8 before making more calls. Investigate a material contradiction with a targeted fixture within the remaining allowance; do not start an open-ended tuning campaign. Model choice changes belong to the owner. Keep model/question/configuration versions recorded and revalidate when changed.
 
 ## 12. Prove local ntfy and the scheduled digest
 
@@ -500,7 +462,7 @@ After the representative live journey works, compare every gate in VALIDATION.md
 - **Resource use:** record idle/load application memory, browser peak, database/backup disk usage and measured model costs. Do not claim 4–8 GiB sizing from the plan as a measurement.
 - **Built portal UX:** repeat core owner journeys on the production Caddy build at 375/768/1440 widths, keyboard-only navigation, labels/focus and meaningful loading/error states. Run axe, but do not call that a complete accessibility audit. Verify browser console errors and no horizontal overflow.
 - **Privacy:** inspect tracked diff/artifacts for secrets and personal data; do not dump files to prove absence. Browser traces/screenshots can contain CVs/tokens; keep real-user traces private and out of Git.
-- **Documentation:** update README/current summaries, installation path examples, preset behaviour, host-specific requirements and supported source limits. Keep historical failures labelled as historical. Do not present the old development exception as the production installation command.
+- **Documentation:** update README/current summaries, installation path examples, task-model/protocol behaviour, host-specific requirements and supported source limits. Keep historical failures labelled as historical. Do not present the old development exception as the production installation command.
 
 ## 15. Troubleshooting: stop at the first evidenced boundary
 
@@ -509,9 +471,9 @@ After the representative live journey works, compare every gate in VALIDATION.md
 | Private-registry hostname in a new-host package error | Lockfile artifact origins and selected registry | Copy corporate credentials/certificates or silently try a mirror |
 | `UnknownIssuer` | Exact client, URL and inherited certificate settings; report original error | Disable verification, global trust edits, repeated retries |
 | Test DB healthy but host handshake times out | Loopback mapping, host route, bridge/veth attachment, selected Docker context | Assume VPN causality or move production/fetcher to host networking |
-| `@preset/job-finder` rejected | TaskConfig validator and preset implementation phase | Replace with an arbitrary concrete model |
-| Model catalog 404 for a preset | Ensure metadata resolution precedes concrete model endpoint lookup | Treat a preset as a public catalog model |
-| Concrete model response rejected for alias | Resolved model identity/version and response allowlist | Accept every model without validation |
+| Jev rejected by chat schema/capability checks | Native Decisions adapter and task-specific probe | Send Jev to chat completions or substitute Jev Router |
+| Decision metadata/privacy/billing contract unavailable | Current official contract and held-budget gate | Guess fields, relax privacy or assume zero cost |
+| Returned model/version rejected | Documented exact identity mapping and response allowlist | Accept every model without validation |
 | Provider cost missing or timeout after send | Usage ledger and provider billing lookup | Mark cost zero or automatically repeat a possibly billed call |
 | Fetcher healthy but collection blocked | Disabled isolation gate, token, effective deployment config | Flip gate without isolation evidence |
 | Preflight rejects verified enabled gate | It currently hardcodes false; implement explicit deployment-state validation | Delete safety assertions globally |
@@ -556,7 +518,7 @@ Use `PASS`, `FAIL`, `BLOCKED`, or `OWNER-ACCEPTED LIMITATION`, each with evidenc
 | Portable dependencies | Clean reproducible approved-registry installs/builds, TLS on, no private-registry artifact URLs or embedded credentials |
 | Fresh baseline | Current backend/frontend/recovery suites pass on isolated new-host resources |
 | Production startup | Full application images, migrations, queue bootstrap and persistent services work on normal Compose networks |
-| Preset support | Three independent task mappings accept alias; real schema/evidence/cost handling; resolved model/version recorded; stale-change guards |
+| Luna/Jev API validation | Three independent task mappings, correct native protocols, real schema/evidence/cost handling, recorded models/versions and stale-change guards; companion gates pass |
 | Private ingress/auth | Real LAN/tailnet HTTPS, authenticated access, CSRF/session checks, negative ingress tests; no public ingress |
 | Fetch containment | Real proxy/bypass/private-address/redirect/rebinding/control-network tests; browser transport included where implemented |
 | Collection | Real deployed collection, honest bounded coverage, repeat/idempotency check, all-jobs preservation; named-company coverage table |
@@ -573,4 +535,4 @@ Do not declare the full PLAN.md complete while required rows are blocked or fail
 
 ## 18. Suggested opening instruction to the next agent
 
-> Read AGENTS.md and FINISH_DEVELOPMENT_AND_VALIDATE.md, then inspect the current checkout and this deployment host read-only. Summarize the next phase and missing owner inputs before changing host configuration. Continue the existing application in bounded validated slices; do not redesign it or add optional features. Use the owner's OpenRouter preset @preset/job-finder after implementing and testing preset support. Keep mocks for automated regression tests, and use finite authorized live validation only after the private key and budget are supplied. Preserve all safety, privacy, private-ingress and dependency-failure boundaries. Update PROGRESS.md between batches and VALIDATION.md with actual results. Complete the real collection → matching → scheduled notification journey, then close the remaining release gates. Report blockers precisely instead of bypassing them or claiming completion.
+> Read AGENTS.md and FINISH_DEVELOPMENT_AND_VALIDATE.md, then inspect the current checkout and this deployment host read-only. Summarize the next phase and missing owner inputs before changing host configuration. Continue the existing application in bounded validated slices; do not redesign it or add optional features. Use the selected Luna/Jev task models and DEPLOYMENT_API_VALIDATION.md at section 8; preset support is deferred. Keep mocks for automated regressions and use bounded live validation only on this host after private key provisioning, with the existing cumulative US$1 / 60-request cap. Preserve all safety, privacy, private-ingress and dependency-failure boundaries. Update PROGRESS.md between batches and VALIDATION.md with actual results. Complete the real collection → matching → scheduled notification journey, then close the remaining release gates. Report blockers precisely instead of bypassing them or claiming completion.
