@@ -69,6 +69,8 @@ Advisor-review hardening batch (same day, from the full advisor findings; commit
 - Matching adapter: the contract-valid `insufficient` primary-function answer now maps to an unclear, score-less assessment instead of a terminal failure; cross-answer contradictions (`unrelated` with a high band, `aligned` with the lowest band) are rejected before a succeeded state; `decisions.request_body` validates question specifications locally (type-specific criteria, nonempty sets, noul true/false) before any paid request; explicit-null confidence parses as absent metadata.
 - Tests: 5 added (decisions blocked by default with zero posts; decisions cap refusal before dispatch with zero posts; concurrent admission; ledger loss detection; insufficient-duties mapping). Full suite: 311 passed, exit 0; ruff and strict mypy clean on all touched files.
 
+Owner decision (2026-10-09): live Decisions (Jev) dispatch is unblocked only after the OpenRouter key limit is lowered to at most US$1 — a provider-enforced cap inside the approved ceiling. The owner performs this in the OpenRouter dashboard (never through the API, per project rules); the launcher's metadata check then requires `limit <= 1.0` before `decisions_live_enabled` may be set. Phase C order unchanged: Luna probes first, then the single Jev `data_collection=deny` probe. Until the lowered limit is verified, Jev stays `ai_decisions_blocked`.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 

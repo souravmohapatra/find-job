@@ -246,9 +246,10 @@ def check_spending_backstop(metadata_state: dict[str, int]) -> None:
         )
     print(f"key backstop: usage={usage} limit={limit}")
     if float(limit) > 1.0:
-        print(
-            f"WARNING: the provider-side limit (${limit}) exceeds the approved US$1"
-            " ceiling; the owner should lower the key limit before billable probes."
+        raise fail(
+            f"the provider-side key limit (${limit}) exceeds the approved US$1"
+            " ceiling. Lower the key limit in the OpenRouter dashboard (owner"
+            " action, never via the API) and rerun."
         )
 
 
