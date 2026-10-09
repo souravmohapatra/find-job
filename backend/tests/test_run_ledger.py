@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+
 from app.ai.run_ledger import TOTAL_REQUESTS, BudgetRefused, RunLedger
 
 
@@ -42,6 +43,19 @@ def test_known_cost_releases_hold_into_known_spend(tmp_path):
     ledger.settle("settled", Decimal("0.05"))
     summary = ledger.summary()
     assert summary["known_usd"] == "0.05"
+    assert summary["held_usd"] == "0"
+    assert summary["unresolved_calls"] == []
+
+
+def test_repeated_settlements_are_idempotent(tmp_path):
+    ledger = RunLedger(tmp_path / "ledger.json")
+    ledger.admit("twice", Decimal("0.10"))
+    ledger.settle("twice", Decimal("0.02"))
+    # The application can record the same finished call more than once.
+    ledger.settle("twice", Decimal("0.02"))
+    ledger.settle("twice", None)
+    summary = ledger.summary()
+    assert summary["known_usd"] == "0.02"
     assert summary["held_usd"] == "0"
     assert summary["unresolved_calls"] == []
 

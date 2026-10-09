@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     secure_cookies: bool = True
     session_days: int = 7
     openrouter_key_file: Path = Path("/run/secrets/openrouter_api_key")
+    # Cumulative admission ledger for bounded live validation; ignored runtime data.
+    live_ledger_path: Path = Path(".data/live_run_ledger.json")
     search_mode: Literal["mock", "live"] = "mock"
     brave_key_file: Path = Path("/run/secrets/brave_api_key")
     search_daily_limit: int = Field(default=300, ge=1, le=10000)

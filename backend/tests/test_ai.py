@@ -10,18 +10,20 @@ from uuid import UUID
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.ai import provider
 from app.ai.contracts import TaskConfig
 from app.ai.models import AiLimitsRow, InferenceCall, TaskRevision
+from app.ai.run_ledger import TOTAL_REQUESTS, RunLedger
 from app.ai.tasks import Probe, reconcile_call
 from app.config import get_settings
 from app.db import get_engine
 from app.domain.profile import Evidence, Facts
 from app.profile_models import Operation, now
 from app.services.operations import OperationError, process_operation
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 
 def auth(client: TestClient) -> dict[str, str]:
@@ -62,7 +64,7 @@ def completion(content: object = None, **overrides: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-def transport(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def transport(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
     state: dict[str, Any] = {
         "posts": [],
         "responses": [completion()],
@@ -110,6 +112,7 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "client",
         lambda: httpx.Client(base_url=provider.BASE_URL, transport=httpx.MockTransport(handler)),
     )
+    monkeypatch.setattr(get_settings(), "live_ledger_path", tmp_path / "run-ledger.json")
     return state
 
 
@@ -282,6 +285,52 @@ def test_timeout_keeps_reservation(transport: dict[str, Any]) -> None:
     with Session(get_engine()) as db:
         call = db.scalar(select(InferenceCall))
         assert call and call.state == "unknown" and call.reported_usd is None
+
+
+def test_cumulative_ledger_blocks_dispatch_without_a_request(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    ledger = RunLedger(get_settings().live_ledger_path)
+    for index in range(TOTAL_REQUESTS):
+        ledger.admit(f"prefill-{index}", Decimal("0.001"))
+        ledger.settle(f"prefill-{index}", Decimal(0))
+    with pytest.raises(OperationError) as raised:
+        run(identifier)
+    assert raised.value.code == "ai_budget"
+    assert transport["posts"] == []
+    with Session(get_engine()) as db:
+        call = db.get(InferenceCall, db.scalar(select(InferenceCall.id)))
+        assert call and call.state == "failed" and call.reported_usd == Decimal(0)
+
+
+def test_live_calls_settle_the_cumulative_ledger(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    assert run(identifier).status == "ok"
+    summary = RunLedger(get_settings().live_ledger_path).summary()
+    assert summary["attempts"] == 1
+    assert summary["known_usd"] == "0.001"
+    assert summary["held_usd"] == "0"
+    assert summary["unresolved_calls"] == []
+
+
+def test_live_transport_failure_keeps_ledger_cost_held(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identifier = configuration()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [httpx.ConnectError("synthetic network failure")]
+    with pytest.raises(OperationError) as raised:
+        run(identifier)
+    assert raised.value.code == "ai_transport"
+    summary = RunLedger(get_settings().live_ledger_path).summary()
+    assert summary["attempts"] == 1
+    assert len(summary["unresolved_calls"]) == 1
+    assert Decimal(summary["held_usd"]) > 0
 
 
 def test_reservations_serialize_budget_and_concurrency() -> None:

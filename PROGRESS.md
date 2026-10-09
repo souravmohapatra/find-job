@@ -19,6 +19,16 @@ Added `backend/app/ai/run_ledger.py`: a persistent cumulative admission ledger (
 
 Not yet done: wiring the ledger into `provider.infer`; the Phase A launcher with the temporary owner-only key-file bridge; Phase B offline harness; Luna/Jev contract checks. The ledger is not yet enforced on any live path. Next action: wire admission into the infer path with offline tests, then build the launcher, then proceed to the Phase A Gate.
 
+## Ledger wiring checkpoint — 2026-10-09
+
+Committed `24f638b` (ledger slice), then wired the ledger into the live dispatch path (local commit pending at write time): `provider.infer` now admits each call to `RunLedger` after the database reservation and before the HTTP POST; `BudgetRefused` finishes the call as a known-free rejection (`ai_budget_<reason>`, no request sent) and raises `ai_budget`. Settlement mirrors every `finish` outcome; transport and unreadable-response failures keep the bound held. `settle` is idempotent (the success path finishes one call twice). New `Settings.live_ledger_path` (default `.data/live_run_ledger.json` under the ignored `.data/` directory); active only when `JOBFINDER_INTEGRATION_MODE=live`, so mock mode is untouched.
+
+Checks: `ruff check`, `ruff format --check` and strict `mypy` pass on all touched files. New tests: cumulative-cap refusal issues no HTTP request and records a free failed call; live calls settle the ledger (`known_usd 0.001`, nothing held); transport failure keeps cost held. Full backend suite: 296 passed, exit 0, against the disposable test DB via `scripts/test-backend.py`. No live request, key read or spend occurred.
+
+Blocker decisions confirmed by the owner: (1) I may create the temporary key bridge `.secrets/openrouter_api_key` (0700 dir / 0600 file, exclusive creation) from `.env`, pointing `JOBFINDER_OPENROUTER_KEY_FILE` at it for the validation run only, deleting it on orderly shutdown; (2) Luna proceeds first, Jev's `provider.data_collection=deny` enforcement is verified live before Jev is validated; (3) Node v24.11.0 drift from the plan's Node 22 is accepted (frontend tests and build already pass on it).
+
+Next: build the Phase A launcher (offline harness, temporary key bridge, `--execute-live` gate), then the Phase A gate checks.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 

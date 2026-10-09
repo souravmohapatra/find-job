@@ -43,7 +43,8 @@ class RunLedger:
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():
             return {"attempts": 0, "known_usd": "0", "held": {}}
-        return json.loads(self.path.read_text())
+        state: dict[str, Any] = json.loads(self.path.read_text())
+        return state
 
     def _write(self, state: dict[str, Any]) -> None:
         temporary = self.path.with_name(self.path.name + ".tmp")
@@ -72,11 +73,16 @@ class RunLedger:
             self._write(state)
 
     def settle(self, call_id: str, actual_usd: Decimal | None) -> None:
-        """Release a hold into known spend. An unknown cost (None) stays held."""
+        """Release a hold into known spend. An unknown cost (None) stays held.
+
+        Idempotent: the application can record the same finished call more than once
+        (for example "completed" then "succeeded" from one response). A settle for a
+        call that is no longer held is a no-op.
+        """
         with self._locked():
             state = self._read()
             if call_id not in state["held"]:
-                raise KeyError(call_id)
+                return
             if actual_usd is None:
                 return
             if not actual_usd.is_finite() or actual_usd < 0:

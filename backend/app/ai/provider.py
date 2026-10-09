@@ -12,16 +12,18 @@ from urllib.parse import quote
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
+
 from app.ai.configuration import limits, set_validation
 from app.ai.contracts import TaskConfig, TaskKey
 from app.ai.models import InferenceCall, TaskRevision
+from app.ai.run_ledger import BudgetRefused, RunLedger
 from app.config import get_settings
 from app.db import get_engine
 from app.profile_models import Operation, now
 from app.services.operations import OperationError
-from pydantic import BaseModel
-from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session
 
 BASE_URL = "https://openrouter.ai/api/v1/"
 
@@ -233,6 +235,15 @@ def endpoint_tags(http: httpx.Client, config: TaskConfig) -> list[str]:
     return sorted(tags)
 
 
+def estimate_bound(config: TaskConfig) -> Decimal:
+    """Upper bound on one request's cost, shared by the database and run ledgers."""
+    estimate = (
+        Decimal(config.input_tokens) * config.prompt_price
+        + Decimal(config.output_tokens) * config.completion_price
+    ) / 1000000 + config.request_price
+    return estimate.quantize(Decimal("0.00000001"), rounding=ROUND_CEILING)
+
+
 def recover_reservations() -> None:
     # Separate transaction: retain the interrupted-call state even when new work is blocked.
     with Session(get_engine()) as db, db.begin():
@@ -259,11 +270,7 @@ def reserve(
     schema_version: str,
 ) -> UUID:
     recover_reservations()
-    estimate = (
-        Decimal(config.input_tokens) * config.prompt_price
-        + Decimal(config.output_tokens) * config.completion_price
-    ) / 1000000 + config.request_price
-    estimate = estimate.quantize(Decimal("0.00000001"), rounding=ROUND_CEILING)
+    estimate = estimate_bound(config)
     with Session(get_engine()) as db, db.begin():
         db.execute(text("SELECT pg_advisory_xact_lock(1012003)"))
         if operation_id is not None:
@@ -380,6 +387,18 @@ def finish(
                 setattr(row, field, value)
 
 
+def settle_ledger(ledger: RunLedger | None, call_id: UUID, response: dict[str, Any] | None) -> None:
+    """Mirror a finished call's provider-reported cost into the cumulative run ledger.
+
+    A missing cost keeps the call's bound held; the ledger never treats an unknown
+    outcome as free.
+    """
+    if ledger is None:
+        return
+    usage = (response or {}).get("usage")
+    ledger.settle(str(call_id), money(usage.get("cost")) if isinstance(usage, dict) else None)
+
+
 def infer[T: BaseModel](
     task: TaskKey,
     config_id: UUID | None,
@@ -456,6 +475,8 @@ def infer[T: BaseModel](
         raise OperationError(
             "mock_model", "Choose a real model before enabling live inference.", blocked=True
         )
+    # Cumulative cap across processes and restarts; active only for billable traffic.
+    ledger = RunLedger(settings.live_ledger_path) if settings.integration_mode == "live" else None
     with client() as http:
         try:
             tags = endpoint_tags(http, config)
@@ -499,10 +520,29 @@ def infer[T: BaseModel](
             body["reasoning"] = {"effort": config.reasoning_effort}
         for attempt in range(2):
             call_id = reserve(config_id, task, config, operation_id, prompt_version, schema_version)
+            if ledger is not None:
+                try:
+                    ledger.admit(str(call_id), estimate_bound(config))
+                except BudgetRefused as refused:
+                    # No request was sent, so the call is genuinely free.
+                    finish(
+                        call_id,
+                        state="failed",
+                        error_code=f"ai_budget_{refused.reason}",
+                        response={"usage": {"cost": 0}},
+                        cost_source="rejected",
+                    )
+                    raise OperationError(
+                        "ai_budget",
+                        "The cumulative live-validation budget cap is reached. Reconcile "
+                        "the run ledger before any further request.",
+                        blocked=True,
+                    ) from refused
             started = time.monotonic()
             try:
                 response = http.post("chat/completions", json=body, timeout=config.timeout_seconds)
             except httpx.HTTPError as error:
+                settle_ledger(ledger, call_id, None)
                 finish(call_id, state="unknown", error_code="ai_transport")
                 raise OperationError(
                     "ai_transport",
@@ -515,6 +555,7 @@ def infer[T: BaseModel](
                 failure = http_failure(response)
                 # Explicit input/auth/rate rejections are free; server errors remain ambiguous.
                 known_free = response.status_code in {400, 401, 402, 403, 404, 422, 429}
+                settle_ledger(ledger, call_id, {"usage": {"cost": 0}} if known_free else None)
                 finish(
                     call_id,
                     state="failed",
@@ -536,12 +577,14 @@ def infer[T: BaseModel](
                 if not isinstance(data, dict):
                     raise ValueError
             except ValueError as error:
+                settle_ledger(ledger, call_id, None)
                 finish(call_id, state="unknown", error_code="ai_response_invalid", latency=latency)
                 raise OperationError(
                     "ai_response_invalid",
                     "The provider response was unreadable; the billing reservation is retained.",
                     blocked=True,
                 ) from error
+            settle_ledger(ledger, call_id, data)
             finish(call_id, state="completed", response=data, latency=latency)
             if (
                 money(
@@ -572,6 +615,7 @@ def infer[T: BaseModel](
                 if validate:
                     validate(result)
             except (ValueError, KeyError, IndexError, TypeError) as error:
+                settle_ledger(ledger, call_id, data)
                 finish(
                     call_id, state="invalid", error_code="ai_schema", response=data, latency=latency
                 )
@@ -598,6 +642,7 @@ def infer[T: BaseModel](
                         blocked=True,
                     ) from error
                 continue
+            settle_ledger(ledger, call_id, data)
             finish(call_id, state="succeeded", response=data, latency=latency)
             set_validation(config_id, "validated")
             return result
