@@ -267,3 +267,37 @@ Limits: one probe per protocol, synthetic payloads only. This does not establish
 Reviewed baseline `594b1ab` plus the pre-existing uncommitted DNS rule/test edits. Fresh `python3 scripts/test_fetch_rules.py` exited 1: six tests run, four failures. Install/reinstall fail with `BLOCKED: expected 12 DOCKER-USER and 6 INPUT managed rules, found 8 6`, followed by post-install rollback. The drift assertion fails because installation left zero rules. This is mocked command execution in temporary files, not a host-firewall or Docker validation. No fix was applied during this review.
 
 Source inspection confirms the harness has no pre-rule DNS baseline, the Jev conversion hardcodes unknown domain/important uncertainty, and the mocked insert-failure case fails on its first insertion rather than testing cleanup of a partial installation. Findings and acceptance limits are recorded in REVIEW.md. Historical backend/browser/live passes were read, not reproduced; no secret/ledger read, dependency operation, live request or privileged runtime check occurred.
+
+## Review findings resolution and Jev Phase D verification — 2026-10-09
+
+Addressed the review findings in [REVIEW.md](REVIEW.md) and [ADVISE.md](ADVISE.md) across installer, harness, and Jev matching adapter:
+
+1. **Firewall installer and mocked transaction suite:**
+   - Restored the pre-exception 8 DOCKER-USER and 2 INPUT ruleset in `deploy/fetch-control-rules.sh`, removing the speculative DNS exceptions.
+   - Fixed installer idempotency: verified existing `8 2` ruleset is kept (or replaced on address drift) rather than stacked; converted `verify()` and `assert_preconditions()` to return-based status so failures are not swallowed inside subshells or conditionals.
+   - Added `test_apply_failure_rolls_back_partially_installed_rules` simulating failure on the 5th insertion after 4 successful insertions, verifying 0 rules remain.
+   - Fresh offline check: all 7 tests in `scripts/test_fetch_rules.py` pass (exit 0, 1.89s).
+
+2. **Docker internal-network DNS baseline demonstration (resolver path remains open blocker):**
+   - Created disposable `--internal` Docker bridge network on this daemon; confirmed that external DNS (`nslookup google.com`) unconditionally fails with `SERVFAIL` from `127.0.0.11:53` without any firewall rules, whereas internal service-name lookup (`nslookup c1`) succeeds. On a standard non-internal bridge, external forwarding succeeds. Dual-homed containers (internal + non-internal bridge) forward external DNS. This confirms Moby libnetwork behavior (`sandbox_dns_unix.go:startResolver`).
+   - Root cause in application: `backend/app/fetcher/http.py:89` calls `getaddrinfo` locally in `resolve_public(url)` before proxying to verify `is_global`. On an internal-only topology where both `fetch_control` and `fetch` are `--internal`, this lookup fails with `FetchFailure("source_dns")`.
+   - REVIEW item 2 remains an OPEN blocker pending proof of a demonstrated restricted resolver path (e.g. topology adjustment with `fetch` bridge, dedicated resolver container, or proxy delegation).
+   - Updated `scripts/test-fetch-control-harness.sh` to baseline both internal service DNS and external DNS pre-rules, preserve probe output/diagnostics/exit status, and verify container and host listener liveness before and after probes.
+3. **Jev Decisions matching adapter (Phase D offline implementation):**
+   - Implemented 5-anchor relevance scoring mapped by `round_half_up(25 * native_score)` to 0..100; tested boundary scores (native 1.16->29, 1.18->30, 1.22->31, 2.36->59, 2.38->60) and half-ties.
+   - Bounded exact quotation candidates (<= 500 chars) presented in full in question criteria; tested late-in-candidate evidence (duties at character 1,200 of 1,500-char posting selected, quoted exactly, and validated).
+   - Implemented dynamic `domain_status` and `domain_evidence` for `focus` domain mode, verifying that domain conflict derives `not_match`.
+   - Implemented dynamic `important_unknowns` Choice question; verified that `score >= 60` with `important_unknowns=false` derives `match`.
+   - Implemented Choice `plausible_connection` (supported / unsupported / unknown) without probability coercion; verified unknown does not coerce to true.
+   - Implemented per-criterion comparability check (`preference:{id}:comparability`), ensuring incomparable terms (e.g. salary) stay unknown with `comparable=False`.
+   - Re-versioned policy to `POLICY_VERSION = "broad-v2"` and prompt/schema to `"matching-decisions-v2"`, ensuring old assessments are treated as historical.
+   - Full backend regression suite: all 329 tests pass (exit 0, 66.44s) against the disposable PostgreSQL 17 test database.
+
+4. **Budget and durable ledger reconciliation:**
+   - Durable ledger `.data/live_run_ledger.json` records 2 attempts, US$0.000020042 known spend, US$0 held spend.
+   - Owner confirmed on 2026-10-09 that the US$1 cap is an advisory validation budget, with the key's $5 monthly limit as an outer provider backstop.
+   - Remaining allowance under advisory cap: 58 attempts, US$0.999979958.
+
+5. **Limits:**
+   - No new live inference requests were made in this session (spend remains US$0.000020042).
+   - Gates C (actual generative schemas), D (live semantic evaluation), E, F, real container isolation matrix, and deployment gates remain open.

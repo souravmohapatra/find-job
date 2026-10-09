@@ -49,10 +49,10 @@ class RunLedger:
                     f"The run ledger file {self.path} disappeared after initialization;"
                     " reconcile the true request and spend state before further dispatch."
                 )
-            state = {"attempts": 0, "known_usd": "0", "held": {}}
-            self._write(state)
+            initial_state: dict[str, Any] = {"attempts": 0, "known_usd": "0", "held": {}}
+            self._write(initial_state)
             self._write_marker()
-            return state
+            return initial_state
         state: dict[str, Any] = json.loads(self.path.read_text())
         return state
 

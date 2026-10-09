@@ -2,6 +2,11 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+from test_assessments import setup
+from test_inventory import posting
+
 from app.ai.contracts import TaskConfig
 from app.ai.models import TaskRevision
 from app.collection.models import Job, JobRevision
@@ -10,10 +15,6 @@ from app.db import get_engine
 from app.profile_models import Operation, Profile
 from app.services import matching
 from app.services.operations import OperationError
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
-from test_assessments import setup
-from test_inventory import posting
 
 
 def add_job(db, availability="active"):
@@ -44,14 +45,17 @@ def test_policy_upgrade_batches_and_failure_does_not_repeat(monkeypatch):
         add_job(db)
         add_job(db, "unknown")
         add_job(db, "closed")
-    monkeypatch.setattr(matching, "POLICY_VERSION", "broad-v2")
+    next_policy = f"{matching.POLICY_VERSION}-upgraded"
+    monkeypatch.setattr(matching, "POLICY_VERSION", next_policy)
     with Session(get_engine()) as db, db.begin():
         assert matching.reconcile(db, batch_size=2) == 2
     with Session(get_engine()) as db, db.begin():
         assert matching.reconcile(db, batch_size=2) == 1
         rows = list(
             db.scalars(
-                select(Operation).where(Operation.parameters["policy_version"].astext == "broad-v2")
+                select(Operation).where(
+                    Operation.parameters["policy_version"].astext == next_policy
+                )
             )
         )
         assert len(rows) == 3
@@ -71,7 +75,8 @@ def test_policy_rollback_fills_new_inventory_without_replaying_existing_intents(
     original = matching.POLICY_VERSION
     with Session(get_engine()) as db, db.begin():
         setup(db)
-    monkeypatch.setattr(matching, "POLICY_VERSION", "broad-v2")
+    next_policy = f"{original}-upgraded"
+    monkeypatch.setattr(matching, "POLICY_VERSION", next_policy)
     with Session(get_engine()) as db, db.begin():
         add_job(db)
         assert matching.reconcile(db) == 2

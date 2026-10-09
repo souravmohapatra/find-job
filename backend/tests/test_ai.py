@@ -771,11 +771,39 @@ def test_matching_decisions_adapter_builds_validated_assessment() -> None:
         "plausible_connection": NoulAnswer(noul=0.9),
     }
     assessment = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(answers)
-    assert assessment.relevance_score == 60 and assessment.relation == "aligned"
+    assert assessment.relevance_score == 50 and assessment.relation == "aligned"
     assert assessment.plausible_connection is True
     assert any(item.span_id == "job:description" for item in assessment.function_evidence)
     validate(assessment, PREFERENCES, spans)
     assert category(assessment, PREFERENCES) == "possible_match"
+
+    # 5-anchor scoring (score 3.0 = 75 >= 60) without important unknowns derives "match"
+    match_assessment = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+        {
+            **answers,
+            "relevance_band": ScoreAnswer(score=3.0),
+            "important_unknowns": ChoiceAnswer(choice="false"),
+        }
+    )
+    assert match_assessment.relevance_score == 75 and match_assessment.relation == "aligned"
+    assert category(match_assessment, PREFERENCES) == "match"
+
+    # Focus-domain conflict derives "not_match"
+    from app.domain.profile import Preferences as DomainPreferences
+
+    focus_prefs = DomainPreferences(
+        desired_roles=["Strategy"], domain_mode="focus", domains=["consulting"]
+    )
+    focus_spans = evidence(FACTS, focus_prefs, posting)
+    conflict = decisions_adapter(FACTS, focus_prefs, posting, focus_spans).interpret(
+        {
+            **answers,
+            "domain_status": ChoiceAnswer(choice="not_met"),
+            "domain_evidence": ChoiceAnswer(choice="cand:job:title:0"),
+        }
+    )
+    assert conflict.domain_status == "not_met"
+    assert category(conflict, focus_prefs) == "not_match"
     unclear = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
         {
             **answers,
@@ -828,6 +856,223 @@ def test_matching_decisions_preference_outcome_requires_selected_support() -> No
     validate(assessment, preferences, spans)
 
 
+def test_matching_decisions_ambiguous_connection_does_not_coerce_to_true() -> None:
+    from app.ai.matching import decisions_adapter, evidence
+    from app.domain.matching import validate
+    from tests.synthetic_matching import FACTS, POSTINGS, PREFERENCES
+
+    posting = POSTINGS[0]
+    spans = evidence(FACTS, PREFERENCES, posting)
+    base_answers = {
+        "primary_function": ChoiceAnswer(choice="job:description"),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "relevance_band": ScoreAnswer(score=2.0),
+    }
+
+    # "unknown" connection choice must NOT be coerced to True
+    unknown_conn = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+        {**base_answers, "plausible_connection": ChoiceAnswer(choice="unknown")}
+    )
+    assert unknown_conn.plausible_connection is False
+    assert unknown_conn.connection_evidence == []
+    validate(unknown_conn, PREFERENCES, spans)
+
+    # "unsupported" connection choice must be False
+    unsupp_conn = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+        {**base_answers, "plausible_connection": ChoiceAnswer(choice="unsupported")}
+    )
+    assert unsupp_conn.plausible_connection is False
+    assert unsupp_conn.connection_evidence == []
+    validate(unsupp_conn, PREFERENCES, spans)
+
+    # Only "supported" with valid evidence becomes True
+    supp_conn = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+        {**base_answers, "plausible_connection": ChoiceAnswer(choice="supported")}
+    )
+    assert supp_conn.plausible_connection is True
+    assert len(supp_conn.connection_evidence) > 0
+    validate(supp_conn, PREFERENCES, spans)
+
+
+def test_matching_decisions_insufficient_score_evidence_produces_none() -> None:
+    from app.ai.matching import decisions_adapter, evidence
+    from app.domain.matching import validate
+    from tests.synthetic_matching import FACTS, POSTINGS, PREFERENCES
+
+    posting = POSTINGS[0]
+    spans = evidence(FACTS, PREFERENCES, posting)
+    answers = {
+        "primary_function": ChoiceAnswer(choice="job:description"),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "relevance_band": ScoreAnswer(score=3.0),
+        "score_sufficiency": ChoiceAnswer(choice="insufficient"),
+        "plausible_connection": ChoiceAnswer(choice="supported"),
+    }
+    assessment = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(answers)
+    # Insufficient evidence on scoring choice produces null score and empty score evidence
+    assert assessment.relevance_score is None
+    assert assessment.score_evidence == []
+    validate(assessment, PREFERENCES, spans)
+
+
+def test_matching_decisions_incomparable_salary_stays_unknown() -> None:
+    from uuid import uuid4
+
+    from app.ai.matching import decisions_adapter, evidence
+    from app.domain.matching import category, validate
+    from app.domain.profile import Criterion, Preferences
+    from tests.synthetic_matching import FACTS, POSTINGS
+
+    # Required salary criterion (compensation)
+    salary_crit = Criterion(
+        id=uuid4(),
+        kind="compensation",
+        description="Base salary at least £120,000 per annum",
+        strength="required",
+    )
+    preferences = Preferences(desired_roles=["Strategy"], criteria=[salary_crit])
+    posting = POSTINGS[0]
+    spans = evidence(FACTS, preferences, posting)
+    base = {
+        "primary_function": ChoiceAnswer(choice="job:description"),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "relevance_band": ScoreAnswer(score=3.0),
+        "plausible_connection": ChoiceAnswer(choice="supported"),
+        "important_unknowns": ChoiceAnswer(choice="false"),
+        f"preference:{salary_crit.id}": ChoiceAnswer(choice="not_met"),
+        f"preference:{salary_crit.id}:evidence": ChoiceAnswer(choice="job:description"),
+    }
+
+    # When terms are incomparable (e.g. currency/period mismatch),
+    # stays unknown with comparable=False
+    incomp_answers = {
+        **base,
+        f"preference:{salary_crit.id}:comparability": ChoiceAnswer(choice="incomparable"),
+    }
+    incomp_assessment = decisions_adapter(FACTS, preferences, posting, spans).interpret(
+        incomp_answers
+    )
+    assert incomp_assessment.criteria[0].status == "unknown"
+    assert incomp_assessment.criteria[0].comparable is False
+    assert incomp_assessment.criteria[0].evidence == []
+    validate(incomp_assessment, preferences, spans)
+    # Because the required criterion is unknown (not not_met), it is not rejected as not_match
+    assert category(incomp_assessment, preferences) == "possible_match"
+
+    # When terms are directly comparable, not_met is enforced with evidence and rejected
+    comp_answers = {
+        **base,
+        f"preference:{salary_crit.id}:comparability": ChoiceAnswer(choice="comparable"),
+    }
+    comp_assessment = decisions_adapter(FACTS, preferences, posting, spans).interpret(comp_answers)
+    assert comp_assessment.criteria[0].status == "not_met"
+    assert comp_assessment.criteria[0].comparable is True
+    assert len(comp_assessment.criteria[0].evidence) == 2
+    validate(comp_assessment, preferences, spans)
+    assert category(comp_assessment, preferences) == "not_match"
+
+
+def test_matching_decisions_round_half_up_boundaries() -> None:
+    from decimal import Decimal
+
+    from app.ai.matching import decisions_adapter, evidence, round_half_up
+    from tests.synthetic_matching import FACTS, POSTINGS, PREFERENCES
+
+    # Test round_half_up directly on half-ties and near-half boundaries
+    assert round_half_up(Decimal("30.5")) == 31
+    assert round_half_up(Decimal("29.5")) == 30
+    assert round_half_up(Decimal("59.5")) == 60
+    assert round_half_up(Decimal("25") * Decimal("1.22")) == 31
+    assert round_half_up(Decimal("25") * Decimal("1.18")) == 30
+    assert round_half_up(Decimal("25") * Decimal("1.16")) == 29
+    assert round_half_up(Decimal("25") * Decimal("2.38")) == 60
+    assert round_half_up(Decimal("25") * Decimal("2.36")) == 59
+
+    posting = POSTINGS[0]
+    spans = evidence(FACTS, PREFERENCES, posting)
+    adapter = decisions_adapter(FACTS, PREFERENCES, posting, spans)
+    base_answers = {
+        "primary_function": ChoiceAnswer(choice="job:description"),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "plausible_connection": NoulAnswer(noul=0.9),
+    }
+
+    # 1.22 * 25 = 30.5 -> half-up 31 (not banker's 30)
+    res_122 = adapter.interpret({**base_answers, "relevance_band": ScoreAnswer(score=1.22)})
+    assert res_122.relevance_score == 31
+
+    # 1.18 * 25 = 29.5 -> half-up 30
+    res_118 = adapter.interpret({**base_answers, "relevance_band": ScoreAnswer(score=1.18)})
+    assert res_118.relevance_score == 30
+
+    # 1.16 * 25 = 29.0 -> 29
+    res_116 = adapter.interpret({**base_answers, "relevance_band": ScoreAnswer(score=1.16)})
+    assert res_116.relevance_score == 29
+
+    # 2.38 * 25 = 59.5 -> half-up 60
+    res_238 = adapter.interpret({**base_answers, "relevance_band": ScoreAnswer(score=2.38)})
+    assert res_238.relevance_score == 60
+
+    # 2.36 * 25 = 59.0 -> 59
+    res_236 = adapter.interpret({**base_answers, "relevance_band": ScoreAnswer(score=2.36)})
+    assert res_236.relevance_score == 59
+
+
+def test_matching_decisions_late_in_candidate_evidence() -> None:
+    from app.ai.matching import decisions_adapter, evidence
+    from app.collection.contracts import Posting
+    from app.domain.matching import validate
+    from tests.synthetic_matching import FACTS, PREFERENCES
+
+    # Long posting description (> 1200 chars) where core duties are past char 1000
+    intro = (
+        "Introduction: We are an established global organisation looking for talented people.\n\n"
+        * 14
+    )
+    duties = (
+        "Lead enterprise corporate strategy, annual capital allocation and portfolio turnaround"
+        " initiatives across European business units."
+    )
+    assert len(intro) > 1000
+    long_desc = intro + "\n\n" + duties
+    posting = Posting(
+        external_id="long-job",
+        title="Strategy Director",
+        description=long_desc,
+        url="https://jobs.example.com/long-job",
+        apply_url="https://jobs.example.com/long-job/apply",
+        locations=["London"],
+    )
+    spans = evidence(FACTS, PREFERENCES, posting)
+    task = decisions_adapter(FACTS, PREFERENCES, posting, spans)
+
+    # Complete bounded candidates are presented in question criteria (not truncated to 150)
+    primary_criteria = task.questions["primary_function"].criteria
+    assert isinstance(primary_criteria, dict)
+    assert any(len(text) > 150 for cid, text in primary_criteria.items() if cid != "insufficient")
+
+    # Find the candidate chunk that contains the late duties
+    late_cid = None
+    for cid, text in primary_criteria.items():
+        if "portfolio turnaround" in text:
+            late_cid = cid
+            break
+    assert late_cid is not None
+
+    answers = {
+        "primary_function": ChoiceAnswer(choice=late_cid),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "relevance_band": ScoreAnswer(score=3.0),
+        "plausible_connection": NoulAnswer(noul=0.9),
+        "important_unknowns": ChoiceAnswer(choice="false"),
+    }
+    assessment = task.interpret(answers)
+    # The citation quote contains the late duties, is <= 500 chars, and passes validate()
+    assert "portfolio turnaround" in assessment.function_evidence[0].quote
+    assert len(assessment.function_evidence[0].quote) <= 500
+    validate(assessment, PREFERENCES, spans)
+
+
 def test_chat_model_mismatch_is_terminal(
     transport: dict[str, Any],
 ) -> None:
@@ -869,10 +1114,12 @@ def test_assess_decisions_enforces_domain_validation_end_to_end(
     transport["responses"] = [
         decision_response(
             {
-                "primary_function": {"type": "choice", "choice": "job:title"},
-                "relation": {"type": "choice", "choice": "aligned"},
-                "relevance_band": {"type": "score", "score": 2.0},
-                "plausible_connection": {"type": "noul", "noul": 0.9},
+                "primary_function": {"type": "choice", "choice": "job:description"},
+                "relation": {"type": "choice", "choice": "unrelated"},
+                "relevance_band": {"type": "score", "score": 3.0},
+                "score_sufficiency": {"type": "choice", "choice": "sufficient"},
+                "plausible_connection": {"type": "choice", "choice": "supported"},
+                "important_unknowns": {"type": "choice", "choice": "false"},
             }
         )
     ]
@@ -973,7 +1220,7 @@ def test_tiered_pricing_overrides_and_discount_pass_capability(
             }
         ],
     }
-    assert run(configuration()) .status == "ok"
+    assert run(configuration()).status == "ok"
 
 
 def test_override_tier_above_ceiling_rejects_endpoint(
@@ -983,9 +1230,7 @@ def test_override_tier_above_ceiling_rejects_endpoint(
         "prompt": "0.000001",
         "completion": "0.000002",
         "request": "0",
-        "overrides": [
-            {"min_prompt_tokens": 272000, "prompt": "0.000001", "completion": "999"}
-        ],
+        "overrides": [{"min_prompt_tokens": 272000, "prompt": "0.000001", "completion": "999"}],
     }
     with pytest.raises(OperationError) as raised:
         run(configuration())

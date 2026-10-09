@@ -28,6 +28,16 @@ if [ "$1" = "-L" ]; then exit 0; fi
 if [ "$1" = "-I" ]; then
   chain=$2; pos=$3; shift 3
   if [ "$mode" = "fail-inserts" ]; then echo "permission denied" >&2; exit 1; fi
+  if [[ "$mode" == fail-after-* ]]; then
+    limit=${mode#fail-after-}
+    count=$(cat "$STATE/insert_count" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "$count" > "$STATE/insert_count"
+    if [ "$count" -gt "$limit" ]; then
+      echo "permission denied at insert $count" >&2
+      exit 1
+    fi
+  fi
   file="$STATE/$chain"
   touch "$file"
   # Real iptables renders bare IPv4 sources/destinations with a /32 prefix.
@@ -170,6 +180,14 @@ class FetchRulesTests(unittest.TestCase):
         self.assertNotIn("172.30.0.10", self.state_reads())
 
     def test_apply_failure_rolls_back_partially_installed_rules(self):
+        # Test partial failure after 4 rules were successfully inserted.
+        (self.state / "mode").write_text("fail-after-4")
+        result = self.script("install")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("rolled back", result.stderr)
+        self.assertEqual(self.counts(), "0 0")
+
+    def test_initial_apply_failure_rolls_back(self):
         (self.state / "mode").write_text("fail-inserts")
         result = self.script("install")
         self.assertNotEqual(result.returncode, 0)

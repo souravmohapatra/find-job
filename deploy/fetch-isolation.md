@@ -35,11 +35,13 @@ Rule set (`deploy/fetch-control-rules.sh install`; dry read-only: `show`):
 3. `fetch_control`: DROP NEW connections sourced from the fetcher IP — workers may
    initiate fetch RPCs; the fetcher may not initiate anything.
 4. `fetch` bridge: DROP NEW from the proxy IP (the proxy opens nothing).
-5. `fetch` bridge: ACCEPT NEW fetcher → proxy:3128 only.
-6. `fetch` bridge: DROP any other NEW from the fetcher.
-7. Any interface: DROP NEW sourced from the fetcher IP (cross-bridge, LAN, host,
-   tailnet egress; rule 5 exempts the proxy port because it is evaluated first).
-
+5. `fetch` bridge: ACCEPT NEW fetcher → proxy:3128 only (`-p tcp --dport 3128`).
+6. `fetch` bridge: DROP any other NEW from the fetcher egress IP.
+7. DOCKER-USER: DROP NEW sourced from the fetcher `fetch_control` IP (cross-bridge, LAN,
+   tailnet egress).
+8. DOCKER-USER: DROP NEW sourced from the fetcher `fetch` IP (cross-bridge, LAN, tailnet egress).
+9. INPUT: DROP NEW sourced from the fetcher `fetch_control` IP (container→host).
+10. INPUT: DROP NEW sourced from the fetcher `fetch` IP (container→host).
 Worker → fetcher RPC (port 8001) is deliberately NOT listed as an accept: it stays
 allowed by falling through `DOCKER-USER` to Docker's own chains, so only the fetcher's
 outbound initiation is constrained.
@@ -68,6 +70,6 @@ applications or private credentials are used as targets.
 
 ## Rollback
 
-`deploy/fetch-control-rules.sh rollback` removes exactly the seven marked rules
+`deploy/fetch-control-rules.sh rollback` removes exactly the ten marked rules
 (newest first) and restores Docker defaults. `show` lists the managed rules at any
 time. No generic flush is used anywhere.

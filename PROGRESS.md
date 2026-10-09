@@ -2,13 +2,45 @@
 
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
-Updated: 2026-10-09. Progress/approach review completed; deployment and matching acceptance remain open. Original development-network live validation remains canceled.
+Updated: 2026-10-09. Authoritative current state reconciled post-review; Jev Phase D matching adapter completed; installer and harness fixed; deployment and matching acceptance remain open.
 
-## Direction advice recorded — 2026-10-09
+## Authoritative current state — 2026-10-09 (post-review resolution and Phase D completion)
 
-At the owner's request, recorded the follow-up judgment and its details in ADVISE.md, grounded in the review commit `0aeb034`: product scope remains aligned, but execution has drifted toward premature breadth before proving usefulness. The advice distinguishes required correctness/security/operations complexity from optional refinement, assesses the attempts and recommends freezing expansion while completing isolation, actual-schema/semantic checks and a representative real monitoring/digest journey. It proposes no rewrite or removal of existing guarantees and changes no confirmed requirements or paid-work authorization.
+This section is the single authoritative current execution snapshot; older summaries below are labeled historical and superseded.
 
-Existing uncommitted edits in deploy/fetch-isolation.md, scripts/test-fetch-control-harness.sh and scripts/test_fetch_rules.py are preserved. The earlier review's failure findings are explicitly dated; they were not rerun against these newer edits. This task writes documentation only. Advice/progress checks passed for local links, whitespace, balanced fences and final newlines; `git diff --check` passed. Saving only ADVISE.md and PROGRESS.md locally, with no push. Next: complete the isolation and core-journey acceptance in a separate implementation assignment. No `.agent` was created without agreement.
+1. **Firewall installer and mocked transaction tests (REVIEW item 1 & 6 resolved):**
+   - Restored pre-exception 8 DOCKER-USER and 2 INPUT ruleset in `deploy/fetch-control-rules.sh`, removing speculative DNS exceptions.
+   - Verified installer idempotency: existing `8 2` ruleset is verified and kept (or replaced on address drift), never stacked.
+   - Converted `verify()` and `assert_preconditions()` to return-based status; failure diagnostics are no longer swallowed inside subshells or conditionals.
+   - Added `test_apply_failure_rolls_back_partially_installed_rules` simulating failure on the 5th insertion after 4 successful insertions, verifying 0 rules remain.
+   - Fresh offline check: all 7 tests in `scripts/test_fetch_rules.py` pass (exit 0, 1.89s).
+
+2. **DNS baseline diagnosed; restricted resolver path remains OPEN blocker (REVIEW item 2):**
+   - Demonstrated Docker daemon behavior on this host: `--internal` networks unconditionally return `SERVFAIL` from `127.0.0.11:53` for external DNS (`nslookup google.com`) without any firewall rules, whereas internal service discovery (`nslookup c1`) succeeds. Standard bridge networks forward external DNS normally. Dual-homed containers (one internal + one non-internal bridge) have working external DNS through `127.0.0.11:53`. This confirms Moby libnetwork behavior (`sandbox_dns_unix.go:startResolver`).
+   - Root cause in application: `backend/app/fetcher/http.py:89` calls `getaddrinfo` locally in `resolve_public(url)` before proxying to verify `is_global`. On the current topology where both `fetch_control` and `fetch` are `--internal`, this lookup unconditionally fails with `FetchFailure("source_dns")`.
+   - The failing-DNS harness baseline documents the topology symptom, not the fix. REVIEW item 2 remains an OPEN blocker pending proof of a demonstrated restricted resolver path (e.g., Path A: `fetch_control` internal + `fetch` dedicated bridge with firewall rules dropping all direct egress except `proxy:3128`; Path B: dedicated resolver container on `fetch`; Path C: proxy delegation).
+   - Harness updated to separately baseline internal service DNS and external DNS pre-rules, preserve probe diagnostics/output/exit status, and verify container and host listener liveness before and after probes.
+3. **Jev Decisions matching adapter (REVIEW item 3 / Phase D resolved):**
+   - 5-anchor relevance scoring implemented: mapped via `round_half_up(25 * native_score)` to 0..100; verified boundary scores (native 1.16->29, 1.18->30, 1.22->31, 2.36->59, 2.38->60) and half-way ties.
+   - Complete bounded quotation candidates (<= 500 chars) presented in full in question criteria; verified late-in-candidate evidence (duties at character 1,200 of 1,500-char posting selected, quoted exactly, and validated).
+   - Dynamic `domain_status` and `domain_evidence` implemented for `focus` domain mode, verifying that domain conflict derives `not_match`.
+   - Dynamic `important_unknowns` Choice question implemented; verified that `score >= 60` with `important_unknowns=false` derives `match`.
+   - Choice `plausible_connection` (supported / unsupported / unknown) implemented without probability coercion; verified unknown does not coerce to true.
+   - Per-criterion comparability check implemented (`preference:{id}:comparability`), ensuring incomparable terms (e.g. salary) stay unknown with `comparable=False`.
+   - Re-versioned policy to `POLICY_VERSION = "broad-v2"` and prompt/schema to `"matching-decisions-v2"`, ensuring old assessments are treated as historical.
+   - Full backend regression suite: all 329 tests pass (exit 0, 66.5s) against the disposable PostgreSQL 17 test database.
+
+4. **Budget and durable ledger reconciliation (REVIEW item 4 & ADVISE resolved):**
+   - Durable ledger `.data/live_run_ledger.json` records **2 attempts, US$0.000020042 known spend, US$0 held spend**.
+   - Owner confirmed on 2026-10-09 that the US$1 cap is an **advisory validation budget**, with the key's $5 monthly limit as an outer provider backstop. Any single call or batch exceeding US$1 will halt for owner review.
+   - Remaining allowance under advisory cap: 58 attempts, US$0.999979958.
+   - Confirmed across `DECISIONS.md`, `DEPLOYMENT_API_VALIDATION.md`, and launcher.
+
+5. **Open gates (REVIEW item 5 resolved):**
+   - Gates C (actual generative profile/extraction schemas), D (live semantic evaluation), E, F, real container isolation matrix, and deployment gates remain explicitly OPEN.
+   - No new live inference requests were made in this session (spend remains US$0.000020042).
+
+## Direction advice recorded — 2026-10-09 (historical)
 
 ## Progress/approach review checkpoint — 2026-10-09 (completed)
 

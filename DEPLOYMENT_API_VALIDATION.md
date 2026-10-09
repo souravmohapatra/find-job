@@ -4,10 +4,9 @@ Updated: 2026-10-09. Derived from the canceled local plan at `b58706d`, preservi
 
 The owner canceled validation on the original development network and moved this work to the deployment environment. First establish reliable API transport, request/response handling, accounting and application orchestration. Only then improve prompts, typed questions, parsing and matching usefulness. “Fine-tune” here means application and prompt iteration, not training model weights.
 
-**Approved total ceiling: US$1 or 60 inference requests, whichever comes first.** The owner explicitly selected this limit. It covers this entire validation effort across hosts, phases, process restarts, calendar days, adapters, retries, repairs and probes. The canceled local attempt recorded zero inference requests, zero known spend and zero held reservations; reconcile any newer records before carrying the remaining allowance forward. It is not an allowance per phase or per model. Do not increase or reset it without the owner.
+**Validation budget:** The owner established an initial **US$1 or 60 inference requests** validation allowance, confirmed on 2026-10-09 as an **advisory validation budget**, with the key's provider-side limit (US$5/month) serving as an outer backstop. Any single call or batch exceeding US$1 halts for owner review. The durable run ledger (`.data/live_run_ledger.json`) enforces admissions. Recorded activity on the deployment host: **2 inference attempts, US$0.000020042 known spend, US$0 held spend**, and 1 metadata GET. Remaining allowance under the advisory cap: 58 attempts, US$0.999979958.
 
-Use `openai/gpt-6-luna` for profile analysis and unstructured job extraction, and TypeSafe Jev for matching judgments. The selected initial Jev version is `typesafe/jev-1.13`, subject to current official availability verification. The owner chose the Jev family; this pinned version is the plan's implementation default. All inference goes through OpenRouter with the owner's existing key.
-
+Active models: `openai/gpt-6-luna` for profile analysis and unstructured job extraction, and TypeSafe Jev (`typesafe/jev-1.13`) for job matching judgments through OpenRouter. Jev task-boundary adapter is implemented with fail-closed typed normalization, 5-anchor relevance scoring mapped by `round_half_up(25 * native_score)` to 0..100, dynamic `domain_status`, dynamic `important_unknowns`, bounded exact evidence candidates, and per-criterion comparability checks under policy version `broad-v2`.
 ## 1. Scope, precedence and stop conditions
 
 The owner reported a key in ignored root `.env` on the original machine. Do not assume that file transfers with Git or copy it into tracked files. Provision the existing key-only secret-file interface privately on the deployment host. The backend reads `JOBFINDER_OPENROUTER_KEY_FILE`; it does not automatically load `.env` or `OPENROUTER_API_KEY`.
@@ -298,16 +297,15 @@ Minimum final table:
 
 | Gate | Result | Evidence / remaining issue |
 | --- | --- | --- |
-| A: isolated configuration and cumulative budget | Pending | |
-| B: offline harness and native parsers | Pending | |
-| C: Luna and Jev live protocol/schema checks | Pending | |
-| D: Jev evidence-backed assessment conversion | Pending | |
-| E: small semantic fixture evaluation | Pending | |
-| F: real worker/API/portal integration | Pending | |
-| Offline regressions and required frontend checks | Pending | |
-| Spend, request count, unresolved reservations | Pending | |
-| Live workers stopped and temporary key removed | Pending | |
-
+| A: isolated configuration and cumulative budget | Passed | Offline refusals, disposable test DB, and `--execute-live` bridge proven in launcher (`scripts/validate-live-api.py`). |
+| B: offline harness and native parsers | Passed | 329 backend tests passing offline; MockTransport covers chat and Decisions protocols, 5-anchor scoring, half-up mapping, candidate bounding, focus-domain checks, comparability, and failure modes. |
+| C: Luna and Jev live protocol/schema checks | Open | Initial synthetic transport probes passed (run `20261009_142304`: Luna chat and Jev Decisions, US$0.000020042 spend, 0 held spend); actual generative profile and extraction schemas remain pending. |
+| D: Jev evidence-backed assessment conversion | Open | Phase D adapter implemented under `broad-v2` / `matching-decisions-v2`, 5 anchors, `round_half_up`, bounded candidates, focus-domain enforcement and comparability; tested offline. Live Jev semantic assessment remains pending. |
+| E: small semantic fixture evaluation | Pending | Evaluation dataset and target rubric pending. |
+| F: real worker/API/portal integration | Pending | Deployed end-to-end journey pending. |
+| Offline regressions and required frontend checks | Passed | 329 backend tests, 7 firewall transaction tests, 9 launcher unit tests passing offline. |
+| Spend, request count, unresolved reservations | Recorded | 2 inference attempts, US$0.000020042 known, US$0 held spend in `.data/live_run_ledger.json`. 58 attempts / US$0.999979958 remaining under advisory validation cap. |
+| Live workers stopped and temporary key removed | Verified | Temporary bridge removed on orderly shutdown in every live launcher run; verified no leftovers. |
 The final report must state exact passes/failures, model versions actually used, request count and total known/held spend, any stopped stage and its next action, commit IDs, and remaining deployment gates. A successful response alone is not matching acceptance. A correct mocked parser alone is not live API acceptance. Reaching the spending cap is a bounded checkpoint, not permission to declare unfinished work complete.
 
 ## 11. Instructions to the executing agent

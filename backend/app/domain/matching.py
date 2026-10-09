@@ -3,10 +3,11 @@
 from typing import Literal
 from uuid import UUID
 
-from app.domain.profile import Contract, Evidence, Preferences, Span
 from pydantic import Field
 
-POLICY_VERSION = "broad-v1"
+from app.domain.profile import Contract, Evidence, Preferences, Span
+
+POLICY_VERSION = "broad-v2"
 Category = Literal["match", "possible_match", "not_match"]
 
 

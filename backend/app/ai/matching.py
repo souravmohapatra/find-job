@@ -1,7 +1,9 @@
 """Profile-agnostic matching task, with deterministic category selection downstream."""
 
 import json
-from typing import Any
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Literal
 from uuid import UUID
 
 from app.ai.decisions import (
@@ -92,12 +94,61 @@ def evidence(facts: Facts, preferences: Preferences, posting: Posting) -> list[S
 
 
 RELEVANCE_BANDS = [
-    "0-29: primary duties are unrelated to the desired functions",
-    "30-49: credible partial or transferable overlap only",
-    "50-69: substantial overlap with the desired functions",
-    "70-100: strong, direct overlap with the desired functions",
+    "0: no meaningful overlap with desired functions or transferable skills",
+    "25: limited overlap, tangential skills, or steep domain/function stretch",
+    "50: credible partial or transferable overlap with role requirements",
+    "75: substantial overlap with desired functions, with manageable gaps",
+    "100: very strong, direct overlap with core desired functions",
 ]
-BAND_SCORES = [15, 40, 60, 85]
+
+
+def round_half_up(value: Decimal | float) -> int:
+    """Round half-way values upward (towards +infinity), not to nearest even."""
+    return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+@dataclass(frozen=True)
+class EvidenceCandidate:
+    candidate_id: str
+    span_id: str
+    text: str
+
+
+def extract_evidence_candidates(spans: list[Span]) -> dict[str, EvidenceCandidate]:
+    """Extract bounded quotation candidates (<= 500 chars) preserving exact substrings."""
+    candidates: dict[str, EvidenceCandidate] = {}
+    for span in spans:
+        full = span.text
+        if not full or not full.strip():
+            continue
+        # Index the raw span ID directly for backwards compatibility
+        candidates[span.id] = EvidenceCandidate(span.id, span.id, full[:500])
+        if len(full) <= 500:
+            cid = f"cand:{span.id}:0"
+            candidates[cid] = EvidenceCandidate(cid, span.id, full)
+            continue
+        pos = 0
+        idx = 0
+        while pos < len(full) and idx < 6:
+            end = min(pos + 500, len(full))
+            if end < len(full):
+                break_at = -1
+                for delim in ("\n\n", ".\n", ". ", "; ", "\n"):
+                    found = full.rfind(delim, pos + 100, end)
+                    if found != -1:
+                        break_at = found + len(delim.rstrip())
+                        break
+                if break_at != -1:
+                    end = break_at
+            chunk = full[pos:end].strip()
+            exact_pos = full.find(chunk, pos) if chunk else -1
+            if exact_pos != -1 and chunk:
+                exact_slice = full[exact_pos : exact_pos + len(chunk)]
+                cid = f"cand:{span.id}:{idx}"
+                candidates[cid] = EvidenceCandidate(cid, span.id, exact_slice)
+                idx += 1
+            pos = end if end > pos else pos + 500
+    return candidates
 
 
 def decisions_adapter(
@@ -109,16 +160,21 @@ def decisions_adapter(
     that supports it, otherwise the adapter fails closed instead of weakening evidence.
     """
     lookup = {span.id: span.text for span in spans}
-    job_spans = sorted(sid for sid in lookup if sid.startswith("job:"))
+    candidates = extract_evidence_candidates(spans)
+    duty_candidates = [c for c in candidates.values() if c.span_id == "job:description"]
+    if not duty_candidates:
+        duty_candidates = [c for c in candidates.values() if c.span_id.startswith("job:")]
+    job_candidates = [c for c in candidates.values() if c.span_id.startswith("job:")]
+
     questions: dict[str, DecisionsQuestion] = {
         "primary_function": DecisionsQuestion(
             type="choice",
             instructions=(
-                "Which job span states the primary duties of this posting? Select"
-                " insufficient only when no span describes actual duties."
+                "Which job candidate describes the primary duties of this posting? Select"
+                " insufficient only when no candidate describes actual duties."
             ),
             criteria={
-                **{sid: lookup[sid][:200] for sid in job_spans},
+                **{c.candidate_id: c.text for c in duty_candidates},
                 "insufficient": "No duties evidence",
             },
         ),
@@ -140,22 +196,78 @@ def decisions_adapter(
             type="score",
             instructions=(
                 "Score the coarse relevance band of this posting against the profile"
-                " evidence. This is coarse relevance, not a hiring probability."
+                " evidence on the documented 5-anchor rubric. This is coarse relevance,"
+                " not a hiring probability."
             ),
             criteria=RELEVANCE_BANDS,
         ),
-        "plausible_connection": DecisionsQuestion(
-            type="noul",
+        "score_sufficiency": DecisionsQuestion(
+            type="choice",
             instructions=(
-                "Is there a credible transferable connection between the posting duties and"
-                " the profile experience, even if the role is not a match?"
+                "Is there sufficient evidence in the listing duties and candidate profile"
+                " to assign a meaningful score on the relevance rubric?"
             ),
             criteria={
-                "true": "A credible transferable connection is shown.",
-                "false": "No such connection is shown.",
+                "sufficient": "Listing duties and profile provide sufficient detail for scoring.",
+                "insufficient": (
+                    "Duties or profile details are insufficient to assign a meaningful score."
+                ),
+            },
+        ),
+        "plausible_connection": DecisionsQuestion(
+            type="choice",
+            instructions=(
+                "Is there a credible transferable connection between the posting duties and"
+                " the profile experience, even if the role is not an immediate match?"
+            ),
+            criteria={
+                "supported": (
+                    "A credible transferable connection between duties and experience is shown."
+                ),
+                "unsupported": "No credible transferable connection is evidenced.",
+                "unknown": "Evidence is insufficient to establish a connection.",
+            },
+        ),
+        "important_unknowns": DecisionsQuestion(
+            type="choice",
+            instructions=(
+                "Are there critical missing facts or unverified requirements that introduce"
+                " substantial uncertainty about candidate suitability?"
+            ),
+            criteria={
+                "true": "Substantial uncertainty or critical missing facts remain.",
+                "false": (
+                    "Key requirements and role duties are sufficiently evidenced without"
+                    " critical unknowns."
+                ),
             },
         ),
     }
+    if preferences.domain_mode == "focus":
+        domains_str = ", ".join(preferences.domains) if preferences.domains else "none"
+        questions["domain_status"] = DecisionsQuestion(
+            type="choice",
+            instructions=(
+                f"The candidate is in focus domain mode for: {domains_str}."
+                " Does this posting belong to these focus domains?"
+            ),
+            criteria={
+                "met": "Posting is clearly in the focus domain(s).",
+                "not_met": "Posting is clearly outside the focus domain(s).",
+                "unknown": "Listing does not provide enough domain context.",
+            },
+        )
+        questions["domain_evidence"] = DecisionsQuestion(
+            type="choice",
+            instructions=(
+                "Which job candidate indicates the industry or domain? Select insufficient"
+                " if unknown or unevidenced."
+            ),
+            criteria={
+                **{c.candidate_id: c.text for c in job_candidates},
+                "insufficient": "No domain evidence",
+            },
+        )
     for criterion in preferences.criteria:
         questions[f"preference:{criterion.id}"] = DecisionsQuestion(
             type="choice",
@@ -169,6 +281,21 @@ def decisions_adapter(
                 "unknown": "The listing does not show the outcome.",
             },
         )
+        questions[f"preference:{criterion.id}:comparability"] = DecisionsQuestion(
+            type="choice",
+            instructions=(
+                "Are the listing terms directly comparable with the criterion"
+                f" ({criterion.description[:200]}) (e.g. matching currency/period for salary,"
+                " verified work authorization/location for remote)?"
+            ),
+            criteria={
+                "comparable": "Listing terms and criterion are directly comparable.",
+                "incomparable": (
+                    "Terms differ in currency, period, or eligibility and cannot be"
+                    " directly compared."
+                ),
+            },
+        )
         questions[f"preference:{criterion.id}:evidence"] = DecisionsQuestion(
             type="choice",
             instructions=(
@@ -176,57 +303,152 @@ def decisions_adapter(
                 " outcome is unknown or no span supports it."
             ),
             criteria={
-                **{sid: lookup[sid][:200] for sid in job_spans},
+                **{c.candidate_id: c.text for c in job_candidates},
                 "insufficient": "No supporting span",
             },
         )
 
     def interpret(answers: dict[str, ChoiceAnswer | NoulAnswer | ScoreAnswer]) -> Assessment:
-        def cite(span_id: str) -> Evidence:
-            text = lookup[span_id][:1000]
+        def cite_span(span_id: str) -> Evidence:
+            text = lookup[span_id]
             if not text:
                 raise ValueError(f"span {span_id!r} is empty and cannot be cited")
-            return Evidence(span_id=span_id, quote=text)
+            return Evidence(span_id=span_id, quote=text[:500])
+
+        def cite_candidate(candidate_id: str) -> Evidence:
+            if candidate_id in candidates:
+                cand = candidates[candidate_id]
+                return Evidence(span_id=cand.span_id, quote=cand.text)
+            return cite_span(candidate_id)
 
         primary_answer = answers["primary_function"]
         assert isinstance(primary_answer, ChoiceAnswer)
-        primary = primary_answer.choice
-        # A contract-valid "duties unknown" answer: cite the duties span mechanically
-        # for the evidence contract and treat the relation as unclear, never as a
-        # terminal failure of an expected answer.
-        duties_unknown = primary == "insufficient"
-        if duties_unknown:
-            primary = "job:description"
-        if primary not in lookup or not primary.startswith("job:"):
-            raise ValueError("primary_function must select a job span or insufficient")
+        primary_choice = primary_answer.choice
+        duties_unknown = primary_choice == "insufficient"
+        if duties_unknown or (primary_choice not in candidates and primary_choice not in lookup):
+            duties_unknown = True
+            primary_cand = duty_candidates[0] if duty_candidates else None
+            if primary_cand is None:
+                raise ValueError("insufficient duties and no fallback job duties span found")
+            function_evidence = [Evidence(span_id=primary_cand.span_id, quote=primary_cand.text)]
+            primary_function = primary_cand.text[:300]
+        else:
+            if primary_choice in candidates:
+                primary_cand = candidates[primary_choice]
+                function_evidence = [
+                    Evidence(span_id=primary_cand.span_id, quote=primary_cand.text)
+                ]
+                primary_function = primary_cand.text[:300]
+            else:
+                primary_cand = None
+                function_evidence = [cite_span(primary_choice)]
+                primary_function = lookup[primary_choice][:300]
+            if not (
+                primary_cand and primary_cand.span_id.startswith("job:")
+            ) and not primary_choice.startswith("job:"):
+                raise ValueError("primary_function must select a job span or insufficient")
+
         relation_answer = answers["relation"]
         assert isinstance(relation_answer, ChoiceAnswer)
-        relation = relation_answer.choice
-        unclear = duties_unknown or relation in {"unclear", "insufficient"}
+        raw_relation = relation_answer.choice
+        if raw_relation not in {"aligned", "adjacent", "unrelated", "unclear", "insufficient"}:
+            raise ValueError(f"unknown relation: {raw_relation!r}")
+        unclear = duties_unknown or raw_relation in {"unclear", "insufficient"}
+        relation: Literal["aligned", "adjacent", "unrelated", "unclear"] = (
+            "unclear" if unclear else raw_relation  # type: ignore[assignment]
+        )
         band_answer = answers["relevance_band"]
         assert isinstance(band_answer, ScoreAnswer)
-        if relation == "unrelated" and band_answer.score >= 2:
-            raise ValueError("relation unrelated contradicts the selected relevance band")
-        if relation in {"aligned", "adjacent"} and band_answer.score < 1:
-            raise ValueError("relation aligned/adjacent contradicts the selected relevance band")
-        function_evidence = [cite(primary)]
+        if relation == "unrelated" and band_answer.score >= 2.0:
+            raise ValueError("relation unrelated contradicts relevance score >= 50")
+        if relation in {"aligned", "adjacent"} and band_answer.score < 1.0:
+            raise ValueError("relation aligned/adjacent contradicts relevance score < 25")
+
         if not unclear:
             for name in ("desired_roles", "excluded_functions"):
                 if lookup.get(f"preference:{name}"):
-                    function_evidence.append(cite(f"preference:{name}"))
+                    function_evidence.append(cite_span(f"preference:{name}"))
             if not any(item.span_id.startswith("preference:") for item in function_evidence):
                 raise ValueError("relation needs citable desired or excluded function spans")
-        relevance_score = None if unclear else BAND_SCORES[int(round(band_answer.score))]
+
+        score_insufficient = False
+        if "score_sufficiency" in answers:
+            suff_ans = answers["score_sufficiency"]
+            assert isinstance(suff_ans, ChoiceAnswer)
+            score_insufficient = suff_ans.choice == "insufficient"
+
+        # Map 0..4 native score anchors to 0..100 via round_half_up(25 * native_score)
+        relevance_score = (
+            None
+            if unclear or score_insufficient
+            else round_half_up(Decimal("25") * Decimal(str(band_answer.score)))
+        )
+        primary_ref = (
+            cite_candidate(primary_choice)
+            if (not duties_unknown and primary_choice in candidates)
+            else function_evidence[0]
+        )
+        score_evidence = (
+            [primary_ref, cite_span("profile:experience")] if relevance_score is not None else []
+        )
+
         connection_answer = answers["plausible_connection"]
-        assert isinstance(connection_answer, NoulAnswer)
-        plausible = connection_answer.noul >= 0.5
+        assert isinstance(connection_answer, (ChoiceAnswer, NoulAnswer))
+        if isinstance(connection_answer, NoulAnswer):
+            plausible = connection_answer.noul >= 0.5
+        else:
+            plausible = connection_answer.choice == "supported"
+        connection_evidence = [primary_ref, cite_span("profile:experience")] if plausible else []
+
+        if "important_unknowns" in answers:
+            unk_ans = answers["important_unknowns"]
+            assert isinstance(unk_ans, ChoiceAnswer)
+            has_critical_unknowns = unk_ans.choice == "true"
+            important_unknowns = duties_unknown or has_critical_unknowns
+        else:
+            important_unknowns = duties_unknown or (relevance_score is None)
+
+        if preferences.domain_mode == "focus":
+            dom_ans = answers["domain_status"]
+            dom_ev_ans = answers["domain_evidence"]
+            assert isinstance(dom_ans, ChoiceAnswer) and isinstance(dom_ev_ans, ChoiceAnswer)
+            d_choice = dom_ans.choice
+            d_support = dom_ev_ans.choice
+            if (
+                d_choice in {"met", "not_met"}
+                and d_support != "insufficient"
+                and (d_support in candidates or d_support in lookup)
+            ):
+                domain_status: Literal["met", "not_met", "unknown"] = d_choice  # type: ignore[assignment]
+                domain_evidence = [cite_candidate(d_support), cite_span("preference:domains")]
+            else:
+                domain_status = "unknown"
+                domain_evidence = []
+        else:
+            domain_status = "met"
+            domain_evidence = []
+
         results = []
         for criterion in preferences.criteria:
             outcome = answers[f"preference:{criterion.id}"]
             support = answers[f"preference:{criterion.id}:evidence"]
             assert isinstance(outcome, ChoiceAnswer) and isinstance(support, ChoiceAnswer)
-            if outcome.choice == "unknown" or support.choice == "insufficient":
-                if outcome.choice != "unknown":
+            if outcome.choice not in {"met", "not_met", "unknown"}:
+                raise ValueError(f"unknown preference outcome: {outcome.choice!r}")
+            crit_status: Literal["met", "not_met", "unknown"] = outcome.choice  # type: ignore[assignment]
+            is_comparable = True
+            if f"preference:{criterion.id}:comparability" in answers:
+                comp_ans = answers[f"preference:{criterion.id}:comparability"]
+                assert isinstance(comp_ans, ChoiceAnswer)
+                is_comparable = comp_ans.choice == "comparable"
+
+            if (
+                not is_comparable
+                or crit_status == "unknown"
+                or support.choice == "insufficient"
+                or (support.choice not in candidates and support.choice not in lookup)
+            ):
+                if is_comparable and crit_status != "unknown":
                     raise ValueError(
                         f"preference {criterion.id} outcome {outcome.choice!r} "
                         "lacks selected support"
@@ -235,34 +457,42 @@ def decisions_adapter(
                     CriterionResult(
                         preference_id=criterion.id,
                         status="unknown",
-                        explanation="The listing does not show the outcome.",
+                        explanation=(
+                            f"Listing terms for {criterion.id} are not directly comparable"
+                            " (e.g. mismatched currency/period or eligibility)."
+                            if not is_comparable
+                            else "The listing does not show the outcome."
+                        ),
+                        comparable=False,
                     )
                 )
                 continue
             results.append(
                 CriterionResult(
                     preference_id=criterion.id,
-                    status=outcome.choice,
+                    status=crit_status,
                     explanation=(
-                        f"Decisions outcome: {outcome.choice} with selected listing support."
+                        f"Decisions outcome: {crit_status} with selected listing support."
                     ),
-                    evidence=[cite(support.choice), cite(f"preference:{criterion.id}")],
+                    evidence=[
+                        cite_candidate(support.choice),
+                        cite_span(f"preference:{criterion.id}"),
+                    ],
                     comparable=True,
                 )
             )
         result = Assessment(
-            primary_function=lookup[primary][:300],
-            relation="unclear" if unclear else relation,
+            primary_function=primary_function,
+            relation=relation,
             function_evidence=function_evidence,
             relevance_score=relevance_score,
-            score_evidence=[cite(primary), cite("profile:experience")]
-            if relevance_score is not None
-            else [],
+            score_evidence=score_evidence,
             plausible_connection=plausible,
-            connection_evidence=[cite(primary), cite("profile:experience")] if plausible else [],
+            connection_evidence=connection_evidence,
             criteria=results,
-            domain_status="unknown",
-            important_unknowns=True,
+            domain_status=domain_status,
+            domain_evidence=domain_evidence,
+            important_unknowns=important_unknowns,
         )
         # The same domain validation and category derivation the chat path enforces;
         # a Decisions outcome never skips evidence validation.
@@ -292,11 +522,10 @@ def assess(
 
     # Adapter split at the task boundary: the stored revision decides the wire protocol;
     # revisions saved before the protocol field keep their historical chat meaning.
-    decisions = (
-        decisions_adapter(facts, preferences, posting, spans)
-        if config_id is not None and stored_protocol(config_id, "job_matching") == "decisions"
-        else None
+    is_decisions = (
+        config_id is not None and stored_protocol(config_id, "job_matching") == "decisions"
     )
+    decisions = decisions_adapter(facts, preferences, posting, spans) if is_decisions else None
     return infer(
         "job_matching",
         config_id,
@@ -305,8 +534,8 @@ def assess(
         task_input(facts, preferences, posting),
         Assessment,
         check,
-        prompt_version="matching-v1",
-        schema_version="matching-v1",
+        prompt_version="matching-decisions-v2" if is_decisions else "matching-v1",
+        schema_version="matching-decisions-v2" if is_decisions else "matching-v1",
         decisions=decisions,
     )
 

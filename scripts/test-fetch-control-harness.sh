@@ -43,27 +43,38 @@ cleanup() {
 trap cleanup EXIT
 
 check() { # name, expected(allowed|blocked), command...
-	local name=$1 expected=$2
+	local name=$1 expected=$2 output status outcome
 	shift 2
-	if "$@" >/dev/null 2>&1; then outcome=allowed; else outcome=blocked; fi
+	output=$("$@" 2>&1)
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		outcome=allowed
+	elif [ "$status" -eq 1 ] || [ "$status" -eq 124 ]; then
+		outcome=blocked
+	else
+		echo "FAIL: $name (probe execution error, exit $status: $output)" >&2
+		FAILURES=$((FAILURES + 1))
+		return
+	fi
 	if [ "$outcome" = "$expected" ]; then
 		echo "PASS: $name ($outcome as expected)"
 	else
-		echo "FAIL: $name (got $outcome, expected $expected)"
+		echo "FAIL: $name (got $outcome, expected $expected; output: $output)" >&2
 		FAILURES=$((FAILURES + 1))
 	fi
 }
 
 must_allow() { # reachability preconditions: identical probe, must succeed
-	local name=$1
+	local name=$1 output status
 	shift
-	if "$@" >/dev/null 2>&1; then
+	output=$("$@" 2>&1)
+	status=$?
+	if [ "$status" -eq 0 ]; then
 		echo "reachable: $name"
 	else
-		die "listener unreachable before any rule was applied: $name (topology broken)"
+		die "listener unreachable before any rule was applied: $name (exit $status: $output)"
 	fi
 }
-
 start_listener() { # container, port — busybox nc accepts one connection; loop it
 	docker exec -d "$1" sh -c "while true; do nc -l -p $2; done"
 }
@@ -120,6 +131,20 @@ must_allow "fetcher→proxy 3128" docker exec "$FETCHER" nc -z -w2 "$proxy" 3128
 must_allow "proxy→fetcher 8001" docker exec "$PROXY" nc -z -w2 "$fetcher_fetch" 8001
 must_allow "fetcher→host listener $HOST_PORT" docker exec "$FETCHER" nc -z -w2 "$gateway" "$HOST_PORT"
 kill -0 "$HOST_LISTENER" || die "host listener died during baseline"
+must_allow "fetcher internal service-name DNS ($PROXY)" docker exec "$FETCHER" nslookup "$PROXY"
+must_allow "worker internal service-name DNS ($FETCHER)" docker exec "$WORKER" nslookup "$FETCHER"
+ext_dns_output=$(docker exec "$FETCHER" nslookup example.com 2>&1)
+ext_dns_status=$?
+if [ "$ext_dns_status" -eq 0 ]; then
+	EXT_DNS_BASELINE="allowed"
+	echo "baseline: external DNS (example.com) is reachable pre-rules"
+else
+	EXT_DNS_BASELINE="blocked"
+	echo "baseline: external DNS (example.com) is blocked pre-rules (exit $ext_dns_status: $ext_dns_output)"
+fi
+for c in "${CONTAINERS[@]}"; do
+	[ "$(docker inspect -f '{{.State.Running}}' "$c")" = "true" ] || die "container $c died before rules applied"
+done
 
 apply_rules "$fc_bridge" "$fetch_bridge" "$fetcher_fc" "$fetcher_fetch" "$proxy" ||
 	{ remove_rules; die "apply_rules failed; harness rules removed"; }
@@ -129,7 +154,11 @@ check "worker→fetcher RPC (same bridge, worker-initiated)" allowed \
 	docker exec "$WORKER" nc -z -w2 "$fetcher_fc" 8001
 check "fetcher→proxy port (the only allowed outbound)" allowed \
 	docker exec "$FETCHER" nc -z -w2 "$proxy" 3128
-check "fetcher DNS via Docker embedded resolver" allowed \
+check "fetcher internal service-name DNS ($PROXY)" allowed \
+	docker exec "$FETCHER" nslookup "$PROXY"
+check "worker internal service-name DNS ($FETCHER)" allowed \
+	docker exec "$WORKER" nslookup "$FETCHER"
+check "fetcher external DNS (matches pre-rule baseline: $EXT_DNS_BASELINE)" "$EXT_DNS_BASELINE" \
 	docker exec "$FETCHER" nslookup example.com
 # Negatives must now be blocked, including same-bridge initiation and host INPUT.
 check "fetcher→worker (same bridge, fetcher-initiated)" blocked \
@@ -138,10 +167,11 @@ check "proxy→fetcher (proxy-initiated)" blocked \
 	docker exec "$PROXY" nc -z -w2 "$fetcher_fetch" 8001
 check "fetcher→host gateway listener (INPUT coverage)" blocked \
 	docker exec "$FETCHER" nc -z -w2 "$gateway" "$HOST_PORT"
-# The negative results are meaningful only if the listeners outlived the probes.
+# The negative results are meaningful only if the listeners and containers outlived the probes.
 kill -0 "$HOST_LISTENER" || die "host listener died during probes; INPUT result is not evidence"
-start_listener "$WORKER" 8002 # busybox nc loops, but re-assert liveness for the record
-
+for c in "${CONTAINERS[@]}"; do
+	[ "$(docker inspect -f '{{.State.Running}}' "$c")" = "true" ] || die "container $c died during probes; negative result is not evidence"
+done
 echo
 if [ "$FAILURES" -eq 0 ]; then
 	echo "HARNESS PASSED: all boundaries behaved as designed on disposable networks."
