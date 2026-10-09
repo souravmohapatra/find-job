@@ -4,6 +4,24 @@ Historical private-registry endpoints in this document are anonymized as `packag
 
 Updated: 2026-10-09. Local live API validation canceled by the owner; continuation moves to the deployment host.
 
+## Deployment-host execution checkpoint — 2026-10-09
+
+Owner assigned execution on this host (x86_64, Ubuntu 24.04.3, Python 3.12.3, Node v24.11.0, npm 11.11.1, Docker 29.1.5, Compose v5.0.1, Docker context `default`, GPG 2.4.4). `uv` is not installed; the old pin is 0.12.23. Free disk on `/` is about 18 GB and RAM is about 15 GB. Unrelated Docker containers and ports (for example ntfy on 127.0.0.1:8093, beng-tasker on 8000) exist; they will not be touched.
+
+Intake findings: `backend/uv.lock` (390 `resolved` entries) and `frontend/package-lock.json` point at the private artifact registry host. `deploy/.env`, `.secrets/` and `backend/.venv` do not exist. `.env` (ignored) defines `OPENROUTER_KEY` and `BRAVE_API_KEY`; the backend reads `JOBFINDER_OPENROUTER_KEY_FILE` instead, so the key must be provisioned as a key-only file. Values were not printed.
+
+Route decision before any install attempt: public PyPI for backend locks and uv, and public npm registry for the frontend lock, both with TLS verification enabled. Reachability was checked with HEAD requests only: pypi.org, registry.npmjs.org and openrouter.ai returned HTTP 200; registry-1.docker.io returned 401 (reachable, unauthenticated). No certificate, proxy or registry trust change is planned. Dependency failures on these routes stop the affected setup path.
+
+Next: provision a project-local uv 0.12.23 under ignored `.tools/`, regenerate locks for the public registries, review the diff, then frozen installs and the Docker builds.
+
+## Deployment-host checkpoint - 2026-10-09 (dependency intake)
+
+Done: uv 0.12.23 provisioned under ignored `.tools/uv-pkg` (python3-venv is not installed, so `ensurepip` venv creation failed and no sudo was used). `backend/uv.lock` regenerated against public `pypi.org` / `files.pythonhosted.org` via `uv lock --default-index https://pypi.org/simple` in a scratch copy first. Comparison: 57 packages before and after, no version changes, no adds or removes, 252 artifact hashes preserved. `uv sync --project backend --frozen --python 3.12` succeeded (exit 0).
+
+Blocker (frontend, npm): `npm install --package-lock-only` on a scratch copy of `frontend/package-lock.json` failed with `npm error code ENOTFOUND`, `syscall getaddrinfo`, host `artifactory.arm.com`, package `@tailwindcss/oxide-wasm32-wasi@4.3.3`, after 3 attempts. All 390 `resolved` URLs in the frontend lock still use `artifactory.arm.com:443`. Per AGENTS.md dependency boundary, frontend install, the `npm ci` in the frontend Docker build, and frontend tests are stopped. Not retried; no registry rewrite, mirror or proxy change was attempted. Needs owner input: the lock must be regenerated against a reachable public registry, or the owner must authorize a different route.
+
+Next: backend Docker build, which does not depend on the frontend lock.
+
 ## Current state
 
 The owner reports that OpenRouter verification cannot be performed on this development network and has canceled the local live plan. Do not resume metadata probes, paid requests or offline implementation under that canceled assignment. Continue on the intended host using [FINISH_DEVELOPMENT_AND_VALIDATE.md](FINISH_DEVELOPMENT_AND_VALIDATE.md), section 8 and [DEPLOYMENT_API_VALIDATION.md](DEPLOYMENT_API_VALIDATION.md), when assigned there.
