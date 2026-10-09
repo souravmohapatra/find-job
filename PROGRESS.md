@@ -52,14 +52,13 @@ This section is the single authoritative current execution snapshot; older summa
    - Harness updated to separately baseline internal service DNS and external DNS pre-rules, preserve probe diagnostics/output/exit status, and verify container and host listener liveness before and after probes.
 3. **Jev Decisions matching adapter (REVIEW item 3 / Phase D resolved):**
    - 5-anchor relevance scoring implemented: mapped via `round_half_up(25 * native_score)` to 0..100; verified boundary scores (native 1.16->29, 1.18->30, 1.22->31, 2.36->59, 2.38->60) and half-way ties.
-   - Complete bounded quotation candidates (<= 500 chars) presented in full in question criteria; verified late-in-candidate evidence (duties at character 1,200 of 1,500-char posting selected, quoted exactly, and validated).
-   - Dynamic `domain_status` and `domain_evidence` implemented for `focus` domain mode, verifying that domain conflict derives `not_match`.
+   - Bounded exact quotation candidates (<= 500 chars) presented in full in question criteria; candidate budget capped at `MAX_CANDIDATES_PER_SPAN = 50` with visible `ValueError` on overflow; verified duty at character 3,500 of 3,522-character description is in candidate pool and selectable beyond the old 6-chunk cutoff.
+   - Dynamic `domain_status` and `domain_evidence` implemented for `focus` domain mode; verified domain conflict derives `not_match`, and unsupported known domain outcomes (`met` or `not_met` with insufficient evidence) are rejected with `ValueError`.
    - Dynamic `important_unknowns` Choice question implemented; verified that `score >= 60` with `important_unknowns=false` derives `match`.
-   - Choice `plausible_connection` (supported / unsupported / unknown) implemented without probability coercion; verified unknown does not coerce to true.
+   - Choice `plausible_connection` (supported / unsupported / unknown) implemented without probability coercion; verified unknown does not coerce to true, and supported connection requires selected profile candidate evidence without mechanical summary/experience fallbacks.
    - Per-criterion comparability check implemented (`preference:{id}:comparability`), ensuring incomparable terms (e.g. salary) stay unknown with `comparable=False`.
    - Re-versioned policy to `POLICY_VERSION = "broad-v2"` and prompt/schema to `"matching-decisions-v2"`, ensuring old assessments are treated as historical.
-   - Full backend regression suite: all 329 tests pass (exit 0, 66.5s) against the disposable PostgreSQL 17 test database.
-
+   - Full backend regression suite: all 330 tests pass (exit 0, 66.77s) against the disposable PostgreSQL 17 test database.
 4. **Budget and durable ledger reconciliation (REVIEW item 4 & ADVISE resolved):**
    - Durable ledger `.data/live_run_ledger.json` records **2 attempts, US$0.000020042 known spend, US$0 held spend**.
    - Owner confirmed on 2026-10-09 that the US$1 cap is an **advisory validation budget**, with the key's $5 monthly limit as an outer provider backstop. Any single call or batch exceeding US$1 will halt for owner review.

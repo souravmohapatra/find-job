@@ -769,6 +769,7 @@ def test_matching_decisions_adapter_builds_validated_assessment() -> None:
         "relation": ChoiceAnswer(choice="aligned"),
         "relevance_band": ScoreAnswer(score=2.0),
         "plausible_connection": NoulAnswer(noul=0.9),
+        "connection_evidence": ChoiceAnswer(choice="profile:summary"),
     }
     assessment = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(answers)
     assert assessment.relevance_score == 50 and assessment.relation == "aligned"
@@ -804,6 +805,33 @@ def test_matching_decisions_adapter_builds_validated_assessment() -> None:
     )
     assert conflict.domain_status == "not_met"
     assert category(conflict, focus_prefs) == "not_match"
+
+    # Unsupported focus-domain outcomes (met or not_met with insufficient evidence) are rejected
+    with pytest.raises(ValueError, match="lacks selected domain support"):
+        decisions_adapter(FACTS, focus_prefs, posting, focus_spans).interpret(
+            {
+                **answers,
+                "domain_status": ChoiceAnswer(choice="not_met"),
+                "domain_evidence": ChoiceAnswer(choice="insufficient"),
+            }
+        )
+    with pytest.raises(ValueError, match="lacks selected domain support"):
+        decisions_adapter(FACTS, focus_prefs, posting, focus_spans).interpret(
+            {
+                **answers,
+                "domain_status": ChoiceAnswer(choice="met"),
+                "domain_evidence": ChoiceAnswer(choice="insufficient"),
+            }
+        )
+    # Genuinely unknown focus domain passes without error
+    unknown_domain = decisions_adapter(FACTS, focus_prefs, posting, focus_spans).interpret(
+        {
+            **answers,
+            "domain_status": ChoiceAnswer(choice="unknown"),
+            "domain_evidence": ChoiceAnswer(choice="insufficient"),
+        }
+    )
+    assert unknown_domain.domain_status == "unknown"
     unclear = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
         {
             **answers,
@@ -885,9 +913,27 @@ def test_matching_decisions_ambiguous_connection_does_not_coerce_to_true() -> No
     assert unsupp_conn.connection_evidence == []
     validate(unsupp_conn, PREFERENCES, spans)
 
-    # Only "supported" with valid evidence becomes True
+    # Supported connection without profile support raises ValueError
+    with pytest.raises(ValueError, match="lacks selected profile support"):
+        decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+            {**base_answers, "plausible_connection": ChoiceAnswer(choice="supported")}
+        )
+    with pytest.raises(ValueError, match="lacks selected profile support"):
+        decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+            {
+                **base_answers,
+                "plausible_connection": ChoiceAnswer(choice="supported"),
+                "connection_evidence": ChoiceAnswer(choice="insufficient"),
+            }
+        )
+
+    # Only "supported" with valid profile evidence becomes True
     supp_conn = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
-        {**base_answers, "plausible_connection": ChoiceAnswer(choice="supported")}
+        {
+            **base_answers,
+            "plausible_connection": ChoiceAnswer(choice="supported"),
+            "connection_evidence": ChoiceAnswer(choice="profile:summary"),
+        }
     )
     assert supp_conn.plausible_connection is True
     assert len(supp_conn.connection_evidence) > 0
@@ -907,6 +953,7 @@ def test_matching_decisions_insufficient_score_evidence_produces_none() -> None:
         "relevance_band": ScoreAnswer(score=3.0),
         "score_sufficiency": ChoiceAnswer(choice="insufficient"),
         "plausible_connection": ChoiceAnswer(choice="supported"),
+        "connection_evidence": ChoiceAnswer(choice="profile:summary"),
     }
     assessment = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(answers)
     # Insufficient evidence on scoring choice produces null score and empty score evidence
@@ -938,6 +985,7 @@ def test_matching_decisions_incomparable_salary_stays_unknown() -> None:
         "relation": ChoiceAnswer(choice="aligned"),
         "relevance_band": ScoreAnswer(score=3.0),
         "plausible_connection": ChoiceAnswer(choice="supported"),
+        "connection_evidence": ChoiceAnswer(choice="profile:summary"),
         "important_unknowns": ChoiceAnswer(choice="false"),
         f"preference:{salary_crit.id}": ChoiceAnswer(choice="not_met"),
         f"preference:{salary_crit.id}:evidence": ChoiceAnswer(choice="job:description"),
@@ -995,6 +1043,7 @@ def test_matching_decisions_round_half_up_boundaries() -> None:
         "primary_function": ChoiceAnswer(choice="job:description"),
         "relation": ChoiceAnswer(choice="aligned"),
         "plausible_connection": NoulAnswer(noul=0.9),
+        "connection_evidence": ChoiceAnswer(choice="profile:summary"),
     }
 
     # 1.22 * 25 = 30.5 -> half-up 31 (not banker's 30)
@@ -1064,6 +1113,7 @@ def test_matching_decisions_late_in_candidate_evidence() -> None:
         "relation": ChoiceAnswer(choice="aligned"),
         "relevance_band": ScoreAnswer(score=3.0),
         "plausible_connection": NoulAnswer(noul=0.9),
+        "connection_evidence": ChoiceAnswer(choice="profile:summary"),
         "important_unknowns": ChoiceAnswer(choice="false"),
     }
     assessment = task.interpret(answers)
@@ -1071,6 +1121,70 @@ def test_matching_decisions_late_in_candidate_evidence() -> None:
     assert "portfolio turnaround" in assessment.function_evidence[0].quote
     assert len(assessment.function_evidence[0].quote) <= 500
     validate(assessment, PREFERENCES, spans)
+
+
+def test_matching_decisions_candidate_budget_beyond_six_chunks() -> None:
+    from app.ai.matching import decisions_adapter, evidence
+    from app.collection.contracts import Posting
+    from app.domain.matching import validate
+    from app.domain.profile import Span
+    from tests.synthetic_matching import FACTS, PREFERENCES
+
+    # 3,522-character description with core duty at the very end past chunk 6
+    filler = (
+        "Company background overview paragraph with general context and operational details.\n\n"
+        * 41
+    )
+    duty_text = (
+        "Lead corporate turnarounds, merger integration and strategic reorganisations"
+        " across international markets."
+    )
+    long_desc = filler + duty_text
+    assert len(long_desc) >= 3522
+
+    posting = Posting(
+        external_id="large-posting",
+        title="Strategy Director",
+        description=long_desc,
+        url="https://jobs.example.com/large",
+        apply_url="https://jobs.example.com/large/apply",
+        locations=["London"],
+    )
+    spans = evidence(FACTS, PREFERENCES, posting)
+    task = decisions_adapter(FACTS, PREFERENCES, posting, spans)
+    criteria = task.questions["primary_function"].criteria
+    assert isinstance(criteria, dict)
+
+    # Ensure all chunks are covered (beyond the old 6-chunk cutoff)
+    duty_cid = None
+    for cid, text in criteria.items():
+        if "merger integration" in text:
+            duty_cid = cid
+            break
+    assert duty_cid is not None, "Duty at end of 3,522-char description must be in candidate pool"
+
+    # Select the late candidate and verify it interprets and validates
+    answers = {
+        "primary_function": ChoiceAnswer(choice=duty_cid),
+        "relation": ChoiceAnswer(choice="aligned"),
+        "relevance_band": ScoreAnswer(score=3.0),
+        "score_sufficiency": ChoiceAnswer(choice="sufficient"),
+        "plausible_connection": ChoiceAnswer(choice="supported"),
+        "connection_evidence": ChoiceAnswer(choice="profile:summary"),
+        "important_unknowns": ChoiceAnswer(choice="false"),
+    }
+    assessment = task.interpret(answers)
+    assert "merger integration" in assessment.function_evidence[0].quote
+    assert len(assessment.function_evidence[0].quote) <= 500
+    validate(assessment, PREFERENCES, spans)
+
+    # Excessively oversized span exceeding budget raises ValueError visibly
+    huge_spans = [
+        *spans,
+        Span(id="job:description:huge", text="Overly large duty text sentence.\n\n" * 1000),
+    ]
+    with pytest.raises(ValueError, match="exceeds candidate budget"):
+        decisions_adapter(FACTS, PREFERENCES, posting, huge_spans)
 
 
 def test_chat_model_mismatch_is_terminal(
@@ -1119,6 +1233,7 @@ def test_assess_decisions_enforces_domain_validation_end_to_end(
                 "relevance_band": {"type": "score", "score": 3.0},
                 "score_sufficiency": {"type": "choice", "choice": "sufficient"},
                 "plausible_connection": {"type": "choice", "choice": "supported"},
+                "connection_evidence": {"type": "choice", "choice": "profile:summary"},
                 "important_unknowns": {"type": "choice", "choice": "false"},
             }
         )

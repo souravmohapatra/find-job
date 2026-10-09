@@ -114,6 +114,9 @@ class EvidenceCandidate:
     text: str
 
 
+MAX_CANDIDATES_PER_SPAN = 50
+
+
 def extract_evidence_candidates(spans: list[Span]) -> dict[str, EvidenceCandidate]:
     """Extract bounded quotation candidates (<= 500 chars) preserving exact substrings."""
     candidates: dict[str, EvidenceCandidate] = {}
@@ -129,7 +132,7 @@ def extract_evidence_candidates(spans: list[Span]) -> dict[str, EvidenceCandidat
             continue
         pos = 0
         idx = 0
-        while pos < len(full) and idx < 6:
+        while pos < len(full) and idx < MAX_CANDIDATES_PER_SPAN:
             end = min(pos + 500, len(full))
             if end < len(full):
                 break_at = -1
@@ -148,6 +151,11 @@ def extract_evidence_candidates(spans: list[Span]) -> dict[str, EvidenceCandidat
                 candidates[cid] = EvidenceCandidate(cid, span.id, exact_slice)
                 idx += 1
             pos = end if end > pos else pos + 500
+        if pos < len(full):
+            raise ValueError(
+                f"Span {span.id!r} ({len(full)} chars) exceeds candidate budget of "
+                f"{MAX_CANDIDATES_PER_SPAN} chunks; complete evidence coverage cannot fit."
+            )
     return candidates
 
 
@@ -165,7 +173,7 @@ def decisions_adapter(
     if not duty_candidates:
         duty_candidates = [c for c in candidates.values() if c.span_id.startswith("job:")]
     job_candidates = [c for c in candidates.values() if c.span_id.startswith("job:")]
-
+    profile_candidates = [c for c in candidates.values() if c.span_id.startswith("profile:")]
     questions: dict[str, DecisionsQuestion] = {
         "primary_function": DecisionsQuestion(
             type="choice",
@@ -226,6 +234,17 @@ def decisions_adapter(
                 ),
                 "unsupported": "No credible transferable connection is evidenced.",
                 "unknown": "Evidence is insufficient to establish a connection.",
+            },
+        ),
+        "connection_evidence": DecisionsQuestion(
+            type="choice",
+            instructions=(
+                "Which profile candidate indicates the transferable experience or skills"
+                " supporting this connection? Select insufficient if unknown or unevidenced."
+            ),
+            criteria={
+                **{c.candidate_id: c.text for c in profile_candidates},
+                "insufficient": "No transferable evidence",
             },
         ),
         "important_unknowns": DecisionsQuestion(
@@ -398,8 +417,18 @@ def decisions_adapter(
             plausible = connection_answer.noul >= 0.5
         else:
             plausible = connection_answer.choice == "supported"
-        connection_evidence = [primary_ref, cite_span("profile:experience")] if plausible else []
-
+        if plausible:
+            conn_ev = answers.get("connection_evidence")
+            if (
+                not conn_ev
+                or not isinstance(conn_ev, ChoiceAnswer)
+                or conn_ev.choice == "insufficient"
+                or (conn_ev.choice not in candidates and conn_ev.choice not in lookup)
+            ):
+                raise ValueError("plausible connection outcome lacks selected profile support")
+            connection_evidence = [primary_ref, cite_candidate(conn_ev.choice)]
+        else:
+            connection_evidence = []
         if "important_unknowns" in answers:
             unk_ans = answers["important_unknowns"]
             assert isinstance(unk_ans, ChoiceAnswer)
@@ -414,11 +443,15 @@ def decisions_adapter(
             assert isinstance(dom_ans, ChoiceAnswer) and isinstance(dom_ev_ans, ChoiceAnswer)
             d_choice = dom_ans.choice
             d_support = dom_ev_ans.choice
-            if (
-                d_choice in {"met", "not_met"}
-                and d_support != "insufficient"
-                and (d_support in candidates or d_support in lookup)
-            ):
+            if d_choice not in {"met", "not_met", "unknown"}:
+                raise ValueError(f"unknown domain choice: {d_choice!r}")
+            if d_choice in {"met", "not_met"}:
+                if d_support == "insufficient" or (
+                    d_support not in candidates and d_support not in lookup
+                ):
+                    raise ValueError(
+                        f"focus domain outcome {d_choice!r} lacks selected domain support"
+                    )
                 domain_status: Literal["met", "not_met", "unknown"] = d_choice  # type: ignore[assignment]
                 domain_evidence = [cite_candidate(d_support), cite_span("preference:domains")]
             else:

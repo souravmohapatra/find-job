@@ -293,19 +293,21 @@ Addressed the review findings in [REVIEW.md](REVIEW.md) and [ADVISE.md](ADVISE.m
    - Updated `scripts/test-fetch-control-harness.sh` to baseline both internal service DNS and external DNS pre-rules, preserve probe output/diagnostics/exit status, and verify container and host listener liveness before and after probes.
 3. **Jev Decisions matching adapter (Phase D offline implementation):**
    - Implemented 5-anchor relevance scoring mapped by `round_half_up(25 * native_score)` to 0..100; tested boundary scores (native 1.16->29, 1.18->30, 1.22->31, 2.36->59, 2.38->60) and half-ties.
-   - Bounded exact quotation candidates (<= 500 chars) presented in full in question criteria; tested late-in-candidate evidence (duties at character 1,200 of 1,500-char posting selected, quoted exactly, and validated).
-   - Implemented dynamic `domain_status` and `domain_evidence` for `focus` domain mode, verifying that domain conflict derives `not_match`.
+   - Bounded exact quotation candidates (<= 500 chars) presented in full in question criteria; candidate budget capped at `MAX_CANDIDATES_PER_SPAN = 50` with visible `ValueError` on overflow; tested with 3,522-character description verifying duty at character 3,500 is in candidate pool and validates.
+   - Implemented dynamic `domain_status` and `domain_evidence` for `focus` domain mode; verified domain conflict derives `not_match`, and unsupported known domain outcomes (`met` or `not_met` with insufficient evidence) are rejected with `ValueError`.
    - Implemented dynamic `important_unknowns` Choice question; verified that `score >= 60` with `important_unknowns=false` derives `match`.
-   - Implemented Choice `plausible_connection` (supported / unsupported / unknown) without probability coercion; verified unknown does not coerce to true.
+   - Implemented Choice `plausible_connection` (supported / unsupported / unknown) without probability coercion; verified unknown does not coerce to true, and supported connection requires selected profile candidate evidence without mechanical summary/experience fallbacks.
    - Implemented per-criterion comparability check (`preference:{id}:comparability`), ensuring incomparable terms (e.g. salary) stay unknown with `comparable=False`.
    - Re-versioned policy to `POLICY_VERSION = "broad-v2"` and prompt/schema to `"matching-decisions-v2"`, ensuring old assessments are treated as historical.
-   - Full backend regression suite: all 329 tests pass (exit 0, 66.44s) against the disposable PostgreSQL 17 test database.
-
+   - Full backend regression suite: all 330 tests pass (exit 0, 66.77s) against the disposable PostgreSQL 17 test database.
 4. **Budget and durable ledger reconciliation:**
    - Durable ledger `.data/live_run_ledger.json` records 2 attempts, US$0.000020042 known spend, US$0 held spend.
    - Owner confirmed on 2026-10-09 that the US$1 cap is an advisory validation budget, with the key's $5 monthly limit as an outer provider backstop.
    - Remaining allowance under advisory cap: 58 attempts, US$0.999979958.
 
-5. **Limits:**
+5. **Runtime blocker (Snap Docker NoNewPrivs EPERM):**
+   - Observed on this host: running any container with `--security-opt no-new-privileges:true` (or Compose `security_opt: [no-new-privileges:true]`) fails during `execve` with exit 255 and `operation not permitted` (`EPERM`). Tested across `alpine`, `ubuntu/squid`, user 0, user 13, seccomp/AppArmor unconfined. Control runs without NNP succeed (exit 0). Daemon is Canonical Snap package (`docker 29.8.0`, rev 3613). Suspected cause: Snap AppArmor confinement denying domain transitions under `PR_SET_NO_NEW_PRIVS`. Runtime security flags are preserved; requested owner inspection of `sudo dmesg -T | grep -E "apparmor|audit|DENIED" | tail -30`.
+
+6. **Limits:**
    - No new live inference requests were made in this session (spend remains US$0.000020042).
    - Gates C (actual generative schemas), D (live semantic evaluation), E, F, real container isolation matrix, and deployment gates remain open.
