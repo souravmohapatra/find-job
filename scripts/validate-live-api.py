@@ -263,20 +263,20 @@ def check_spending_backstop(metadata_state: dict[str, int]) -> None:
             " provider (dashboard, not API) at or below the remaining allowance first."
         )
     reset = data.get("limit_reset")
-    if reset:
-        raise fail(
-            f"the key limit resets ({reset!r}); a resetting allowance cannot enforce"
-            " the cumulative US$1 cap. Remove the reset or use a static key limit."
-        )
     remaining = data.get("limit_remaining")
     if remaining is not None and (not finite(remaining) or remaining <= 0):
         raise fail("the provider-side backstop is exhausted or unusable; diagnose offline")
     print(f"key backstop: usage={usage} limit={limit}")
+    # Owner decision 2026-10-09: the US$1 ceiling is advisory for validation; the key
+    # limit is an additional provider backstop (requests are charged on completion
+    # from estimated preflight costs; single-request enforcement is unverified).
+    # A resetting or oversized allowance is reported, not refused.
+    if reset:
+        print(
+            f"NOTE: the key limit resets ({reset!r}); it caps spend per period, not"
+            " cumulatively. The run ledger remains the cumulative admission gate."
+        )
     if float(limit) > 1.0:
-        # Owner decision 2026-10-09: the US$1 ceiling is advisory for validation;
-        # the key limit is an additional provider backstop (requests are charged on
-        # completion from estimated preflight costs; single-request enforcement is
-        # unverified). Exceeding it is reported, not refused.
         print(
             f"NOTE: the provider-side key limit (${limit}) exceeds the advisory US$1"
             " validation cap. The run ledger remains the pre-dispatch admission gate;"

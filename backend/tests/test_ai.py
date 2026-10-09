@@ -933,3 +933,58 @@ def test_ledger_concurrent_admission_cannot_overcount(tmp_path: Path) -> None:
         outcomes = list(pool.map(admit, range(cap + 10)))
     assert outcomes.count("admitted") == cap
     assert outcomes.count("refused") == 10
+
+
+# --- Launcher probe orchestration (run_probes): exercised offline before any paid run ---
+
+
+def load_launcher() -> Any:
+    import importlib.util
+
+    path = Path(__file__).parents[2] / "scripts" / "validate-live-api.py"
+    spec = importlib.util.spec_from_file_location("validate_live_api", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_run_probes_executes_luna_then_jev(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launcher = load_launcher()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    monkeypatch.setattr(get_settings(), "decisions_live_enabled", True)
+    transport["responses"] = [
+        completion(model="openai/gpt-6-luna"),
+        decision_response(),
+    ]
+    launcher.run_probes()
+    assert transport["urls"] == [
+        "https://openrouter.ai/api/v1/chat/completions",
+        "https://openrouter.ai/api/alpha/decisions",
+    ]
+    with Session(get_engine()) as db:
+        calls = list(db.scalars(select(InferenceCall).order_by(InferenceCall.created_at)))
+        assert [call.state for call in calls] == ["succeeded", "succeeded"]
+        revisions = list(db.scalars(select(TaskRevision)))
+        assert sorted((revision.task, revision.revision) for revision in revisions) == [
+            ("job_matching", 1),
+            ("profile_analysis", 1),
+        ]
+
+
+def test_run_probes_stops_after_first_failure_without_jev_post(
+    transport: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launcher = load_launcher()
+    monkeypatch.setattr(get_settings(), "integration_mode", "live")
+    transport["responses"] = [httpx.Response(429, headers={"Retry-After": "600"})]
+    with pytest.raises(SystemExit):
+        launcher.run_probes()
+    assert transport["urls"] == ["https://openrouter.ai/api/v1/chat/completions"]
+    with Session(get_engine()) as db:
+        assert db.scalar(select(InferenceCall)).state == "failed"
+        revisions = list(db.scalars(select(TaskRevision)))
+        assert [(revision.task, revision.revision) for revision in revisions] == [
+            ("profile_analysis", 1)
+        ]

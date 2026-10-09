@@ -66,7 +66,6 @@ def test_valid_static_limit_within_ceiling_passes(
         {"usage": 0, "limit": None},  # unset backstop
         {"usage": 0, "limit": float("nan")},  # non-finite limit slips naive checks
         {"usage": float("nan"), "limit": 1},  # non-finite usage
-        {"usage": 0, "limit": 1, "limit_reset": "monthly"},  # resetting allowance
         {"usage": 1, "limit": 1, "limit_remaining": 0},  # exhausted
         {"usage": 0, "limit": 1, "limit_remaining": float("nan")},  # unusable remaining
     ],
@@ -77,6 +76,19 @@ def test_unenforceable_backstops_are_rejected(
     metadata_get(monkeypatch, data, [])
     with pytest.raises(SystemExit):
         launcher.check_spending_backstop({"attempts": 0})
+
+
+def test_resetting_allowance_passes_with_note(
+    launcher: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    # The observed real key is exactly this shape: $5, resetting monthly. Owner
+    # decision 2026-10-09: advisory, not refused.
+    metadata_get(
+        monkeypatch, {"usage": 0, "limit": 5, "limit_remaining": 5, "limit_reset": "monthly"}, []
+    )
+    launcher.check_spending_backstop({"attempts": 0})
+    output = capsys.readouterr().out
+    assert "resets ('monthly')" in output and "advisory US$1" in output
 
 
 def test_ceiling_above_advisory_cap_passes_with_note(
