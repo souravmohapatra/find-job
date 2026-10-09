@@ -20,7 +20,11 @@ Done: uv 0.12.23 provisioned under ignored `.tools/uv-pkg` (python3-venv is not 
 
 Frontend npm lock: the earlier fetch blocker (`ENOTFOUND` on the previous package host, `@tailwindcss/oxide-wasm32-wasi@4.3.3`, 3 attempts) is resolved by owner authorization to use the public npm registry. `frontend/package-lock.json` was rewritten with a script (since removed) that changed only the 390 `resolved` URL prefixes to `https://registry.npmjs.org/`. Verified: the diff is exactly 390 `resolved` lines; 390 `integrity` values unchanged; `npm ci --ignore-scripts --registry=https://registry.npmjs.org/` in a scratch copy exited 0 (321 packages added). Frontend image, compose stack, Luna/Jev live validation and budget work are not yet started.
 
-Next: confirm frontend build from the rewritten lock, then the frontend image.
+Frontend verified on the real checkout from the public-registry lock: `npm ci --no-audit --no-fund --registry=https://registry.npmjs.org/` exit 0 (321 packages added); `npm run build` exit 0 (Vite build, `dist/` produced). Frontend image: `docker build -f deploy/frontend.Dockerfile -t jobfinder-frontend:local .` exit 0 (image `e2c85fec1ff9`). Smoke: `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` printed `Valid configuration` (exit 0); `/srv/index.html` and `/srv/assets` present.
+
+Not yet run: frontend unit tests, backend test suite, compose stack, Luna/Jev live validation, budget ledger.
+
+History note: five earlier commits (`c3eacc7`, `00b4894`, `f8931ad`, `b732d4c`, `1dba8ce`) contain the previous package-host string in history. Removing it from history requires an explicit rewrite decision from the owner; the working tree and lock are clean.
 
 
 
