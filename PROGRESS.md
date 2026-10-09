@@ -83,6 +83,14 @@ En route, one production defect surfaced and was fixed before any probe could ru
 
 Evidence recorded in VALIDATION.md. Limits: one probe per protocol, synthetic payloads; deny enforcement is verified only to the extent externally observable (request accepted, routed to TypeSafe, no error). Next: section 8 remaining items — no further live probes until the next batch; then phases 9+ of the FINISH plan (fetching isolation, browser collection, ntfy digest, backups) per plan order.
 
+## Fetch isolation preparation checkpoint — 2026-10-09 (section 9, prepared not installed)
+
+Mapped the existing topology: the fetcher already has token-only secrets, no DB/CV/provider credentials, no Docker socket, no host network; egress goes only through the Squid proxy (`deploy/squid.conf` denies non-global IPv4/IPv6 at connection time, ports 80/443 only); `resolve_public` pre-checks DNS and refuses non-global results; body limits, robots, pacing and cooldowns are enforced (`app/fetcher/http.py`, `governor.py`).
+
+Prepared for owner review, nothing installed: `deploy/fetch-control-rules.sh` (install/verify/rollback/show) implements seven stateful rules in `DOCKER-USER` marked `jobfinder-fetch-control`: established/reply flow acceptance on both fetch bridges; fetcher-initiated NEW connections dropped on `fetch_control` and everywhere else (rule 7 covers cross-bridge/LAN/host/tailnet); fetcher→proxy:3128 the only accepted NEW; proxy-initiated NEW dropped. Worker→fetcher RPC intentionally falls through to Docker's own chains. The installer refuses to run unless both networks are internal and `bridge-nf-call-iptables=1` holds (same-bridge traffic reaches the rules only through that hook), verifies address freshness at verify time, and rollback removes exactly the marked rules. Persistence: `deploy/jobfinder-fetch-control.service` (oneshot after docker.service, idempotent install + verify, rollback on stop). Review document: `deploy/fetch-isolation.md` including the section 9.2 matrix plan (disposable listeners, synthetic payloads, no real metadata services/LAN targets). `bash -n` passes; `show` reports no managed rules present.
+
+NOT done: installation (requires owner approval — host firewall), the real-container matrix run, the `JOBFINDER_FETCH_ISOLATION_VERIFIED` enablement/preflight change. Next: owner reviews the rule set; on approval, install, run `scripts/test-fetch-isolation.py` against the controlled acceptance instance, then implement the reviewed enablement override.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 

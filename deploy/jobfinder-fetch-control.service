@@ -1,0 +1,18 @@
+[Unit]
+Description=JobFinder fetch-control directionality rules (reviewed rule set)
+Documentation=file:/opt/jobfinder/deploy/fetch-isolation.md
+After=docker.service
+Requires=docker.service
+# The rules reference container addresses: run after the fetcher and proxy are up.
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Idempotent install; verify fails closed on address drift.
+ExecStart=/opt/jobfinder/deploy/fetch-control-rules.sh install
+ExecStart=/opt/jobfinder/deploy/fetch-control-rules.sh verify
+RemainAfterExit=yes
+ExecStop=/opt/jobfinder/deploy/fetch-control-rules.sh rollback
+
+[Install]
+WantedBy=multi-user.target
