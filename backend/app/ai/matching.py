@@ -598,8 +598,8 @@ def assess(
         task_input(facts, preferences, posting),
         Assessment,
         check,
-        prompt_version="matching-decisions-v2" if is_decisions else "matching-v1",
-        schema_version="matching-decisions-v2" if is_decisions else "matching-v1",
+        prompt_version="matching-decisions-v3" if is_decisions else "matching-v1",
+        schema_version="matching-decisions-v3" if is_decisions else "matching-v1",
         decisions=decisions,
     )
 

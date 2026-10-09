@@ -1,8 +1,8 @@
-"""Controlled acceptance test runner for section 9.2 fetch isolation matrix.
+"""Draft acceptance test runner for section 9.2 fetch isolation matrix.
 
-Exercises both positive and negative boundary probes against an isolated acceptance
-instance or real container stack using synthetic targets, never live credentials or
-LAN applications. Run: python3 scripts/test-fetch-isolation.py
+NOTE: Live container matrix execution is currently RUNTIME-BLOCKED by host blocker
+R1 (Snap Docker NoNewPrivs EPERM). This script is draft scaffolding under development,
+not a completed isolation proof.
 """
 
 import argparse

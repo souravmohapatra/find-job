@@ -7,7 +7,7 @@ from pydantic import Field
 
 from app.domain.profile import Contract, Evidence, Preferences, Span
 
-POLICY_VERSION = "broad-v2"
+POLICY_VERSION = "broad-v3"
 Category = Literal["match", "possible_match", "not_match"]
 
 
