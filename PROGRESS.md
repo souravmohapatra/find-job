@@ -97,6 +97,14 @@ Second advisor pass (same day): the installer is now genuinely idempotent — an
 
 Third advisor pass (same day): the host listener is persistent (`nc -lk`, netcat-openbsd verified) — a one-shot listener would have died on the baseline probe and let the INPUT negative pass on a closed port; all five routes including both negatives (fetcher→worker, proxy→fetcher) are baselined as reachable before rules; and the harness re-asserts host-listener liveness after the negative probes, so a green result reflects enforcement, not a dead port. Harness state: ready for the owner to run `sudo scripts/test-fetch-control-harness.sh`; real install follows only on a green harness.
 
+## DNS attribution finding — harness run 2026-10-09 (owner-executed)
+
+The owner ran `sudo scripts/test-fetch-control-harness.sh`. Results: all five baseline routes reachable pre-rules; post-rules, five of six probes behaved as designed (worker→fetcher and fetcher→proxy allowed; fetcher→worker, proxy→fetcher and fetcher→host-INPUT blocked). One failure: `nslookup example.com` inside the fetcher-like container was blocked after rules.
+
+Attribution is NOT established, and a source-evidence advisory changes the likely cause: Moby `daemon/libnetwork/sandbox_dns_unix.go:startResolver` disables external DNS forwarding for sandboxes connected only to internal networks and runs the resolver setup inside the sandbox namespace — exactly this topology. The `nslookup example.com` failure may therefore pre-date any firewall rule: Docker's embedded resolver on an internal-only network may not forward public names at all on the installed Docker version. The speculative INPUT `127.0.0.11/32` udp/tcp-53 allowances added in response are unfounded on this evidence and are FLAGGED FOR REVERT before the next harness run (not yet reverted per the owner's stop instruction). No unrestricted port-53 allowance may remain: TCP 53 to arbitrary destinations is an alternate-transport bypass prohibited by FINISH §9.1.
+
+Required next steps, in order: (1) revert the speculative INPUT resolver exception; (2) baseline DNS on the installed Docker version with NO rules installed — external-name lookup and internal service-name lookup tested separately (the harness must treat them as distinct probes); (3) only if external resolution is genuinely required but broken by topology (not by our rules), design a demonstrated resolver path — e.g. a controlled caching resolver on the fetch network with an explicit dst-restricted allowance — instead of protocol-wide exceptions; (4) re-run the harness. The real fetcher's `resolve_public` needs public-name resolution, so this is an architecture question for the fetch topology, independent of the firewall rules. Harness conclusion unchanged: DO NOT install on the real stack until the DNS baseline is understood and the harness is fully green.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 
