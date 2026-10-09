@@ -21,6 +21,10 @@ Done: uv 0.12.23 provisioned under ignored `.tools/uv-pkg` (python3-venv is not 
 Blocker (frontend, npm): `npm install --package-lock-only` on a scratch copy of `frontend/package-lock.json` failed with `npm error code ENOTFOUND`, `syscall getaddrinfo`, host `artifactory.arm.com`, package `@tailwindcss/oxide-wasm32-wasi@4.3.3`, after 3 attempts. All 390 `resolved` URLs in the frontend lock still use `artifactory.arm.com:443`. Per AGENTS.md dependency boundary, frontend install, the `npm ci` in the frontend Docker build, and frontend tests are stopped. Not retried; no registry rewrite, mirror or proxy change was attempted. Needs owner input: the lock must be regenerated against a reachable public registry, or the owner must authorize a different route.
 
 Next: backend Docker build, which does not depend on the frontend lock.
+Backend image: `docker build -f deploy/backend.Dockerfile -t jobfinder-backend:local .` succeeded (exit 0, image `63b6a512bebf`). Smoke: `docker run --rm --entrypoint python jobfinder-backend:local -c "import app.main"` printed `import ok FastAPI` (exit 0). No secret was mounted and no model or metadata request was made.
+
+Stopped here: frontend npm lock regeneration is blocked (see the dependency-intake entry above). Frontend image, compose stack, Luna/Jev live validation and budget work not started.
+
 
 ## Current state
 
