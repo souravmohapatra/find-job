@@ -103,16 +103,23 @@ gateway=$(docker network inspect "$NET_FC" --format '{{(index .IPAM.Config 0).Ga
 start_listener "$FETCHER" 8001
 start_listener "$WORKER" 8002
 start_listener "$PROXY" 3128
-# A real host listener behind the bridge gateway: without it, the INPUT probe could
-# pass trivially on connection-refused instead of proving the firewall drop.
-nc -l "$HOST_PORT" >/dev/null 2>&1 &
-PIDS+=("$!")
+# A persistent host listener behind the bridge gateway (netcat-openbsd -k): a one-shot
+# listener would die on the baseline probe and the post-rule negative would pass
+# trivially on a closed port instead of proving INPUT enforcement.
+nc -lk "$HOST_PORT" >/dev/null 2>&1 &
+HOST_LISTENER=$!
+PIDS+=("$HOST_LISTENER")
 sleep 1
 
-# Establish every listener BEFORE rules exist; a failure here is topology, not policy.
+# Establish EVERY listener BEFORE rules exist; a failure here is topology, not policy.
+# The two negatives are baselined too: they must be reachable first, so a later
+# block proves the firewall did it.
 must_allow "worker→fetcher 8001" docker exec "$WORKER" nc -z -w2 "$fetcher_fc" 8001
+must_allow "fetcher→worker 8002" docker exec "$FETCHER" nc -z -w2 "$worker_ip" 8002
 must_allow "fetcher→proxy 3128" docker exec "$FETCHER" nc -z -w2 "$proxy" 3128
+must_allow "proxy→fetcher 8001" docker exec "$PROXY" nc -z -w2 "$fetcher_fetch" 8001
 must_allow "fetcher→host listener $HOST_PORT" docker exec "$FETCHER" nc -z -w2 "$gateway" "$HOST_PORT"
+kill -0 "$HOST_LISTENER" || die "host listener died during baseline"
 
 apply_rules "$fc_bridge" "$fetch_bridge" "$fetcher_fc" "$fetcher_fetch" "$proxy" ||
 	{ remove_rules; die "apply_rules failed; harness rules removed"; }
@@ -131,6 +138,9 @@ check "proxy→fetcher (proxy-initiated)" blocked \
 	docker exec "$PROXY" nc -z -w2 "$fetcher_fetch" 8001
 check "fetcher→host gateway listener (INPUT coverage)" blocked \
 	docker exec "$FETCHER" nc -z -w2 "$gateway" "$HOST_PORT"
+# The negative results are meaningful only if the listeners outlived the probes.
+kill -0 "$HOST_LISTENER" || die "host listener died during probes; INPUT result is not evidence"
+start_listener "$WORKER" 8002 # busybox nc loops, but re-assert liveness for the record
 
 echo
 if [ "$FAILURES" -eq 0 ]; then

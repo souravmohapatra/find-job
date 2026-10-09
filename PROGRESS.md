@@ -95,6 +95,8 @@ Advisor corrections (same day, before any install): rule 5 lacked `-p tcp` (ipta
 
 Second advisor pass (same day): the installer is now genuinely idempotent — an existing "8 2" ruleset is verified and kept (or replaced on address drift), never stacked; `verify` is return-based (a `die` inside an `if`-condition had exited the whole script with swallowed diagnostics — found by the mocked tests); freshness greps match iptables' `IP/32` rendering; and `scripts/test_fetch_rules.py` (6 unittest cases with mocked iptables/docker shims, including /32 rendering and the grep-exit-1 delete case) proves first install, identical reinstall, stale-rule replacement, apply-failure rollback, rollback removal and drift-detected verification — all offline. The harness establishes every listener's reachability BEFORE applying rules (so a dead listener cannot false-green the INPUT probe), uses unique per-run resource names, and registers resources at creation so cleanup never touches pre-existing user resources.
 
+Third advisor pass (same day): the host listener is persistent (`nc -lk`, netcat-openbsd verified) — a one-shot listener would have died on the baseline probe and let the INPUT negative pass on a closed port; all five routes including both negatives (fetcher→worker, proxy→fetcher) are baselined as reachable before rules; and the harness re-asserts host-listener liveness after the negative probes, so a green result reflects enforcement, not a dead port. Harness state: ready for the owner to run `sudo scripts/test-fetch-control-harness.sh`; real install follows only on a green harness.
+
 
 ## Deployment-host checkpoint - 2026-10-09 (dependency intake)
 
