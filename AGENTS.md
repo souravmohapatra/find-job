@@ -6,6 +6,8 @@ This is a personal project: an AI-assisted job finder and company monitor. Do no
 
 Read [CONTEXT.md](CONTEXT.md), [PLAN.md](PLAN.md), and [PROGRESS.md](PROGRESS.md) before substantial work. Use [DECISIONS.md](DECISIONS.md) to distinguish user requirements from selected implementation defaults. Read [IMPLEMENTATION.md](IMPLEMENTATION.md) before implementation-related work. This scoped guide takes precedence over generic home guidance where they differ.
 
+Update PROGRESS.md as the work continues.
+
 ## Working autonomy
 
 The user grants autonomy over local Git activities: inspect, stage, create local branches, and make local commits when useful within authorized work. Routine local Git actions need no repeated permission. Preserve existing user work; ask before discarding changes or rewriting existing history. Do not push, publish, or modify remotes without explicit authorization. Local Git autonomy does not authorize application implementation, installations, builds, or runtime work outside the requested scope.

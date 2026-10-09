@@ -1,5 +1,15 @@
 # Validation
 
+## Agent continuation review checks — 2026-10-09, baseline `72cb6df`
+
+Fresh `python3 scripts/test_fetch_rules.py`: 7 passed, exit 0, 2.126s. `bash -n deploy/fetch-control-rules.sh scripts/test-fetch-control-harness.sh`: exit 0. Synthetic isolated matching source/domain checks confirmed duty coverage after character 3,500, visible refusal of a 26,000-character unbroken span exceeding the candidate budget, rejection of unsupported known focus-domain outcomes, and selected profile skill support for a connection. They also confirmed score evidence still mechanically references aggregate experience. No provider/database/network/state access was used by these self-checks.
+
+Read-only `docker version --format 'client={{.Client.Version}} server={{.Server.Version}}'` exited 1: `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`. Client reports 29.1.5; server identity was not obtainable. A read-only formatted Docker info attempt also reported socket permission denial. This review did not reproduce the target-host NNP/EPERM failure or read kernel logs. The recorded 330-test backend pass and target-host DNS/runtime experiments were inspected, not rerun.
+
+Official Linux kernel NNP documentation and Docker AppArmor documentation were consulted for general mechanisms and diagnostic guidance; neither establishes this host's causal diagnosis. Source tracing identifies unchanged matching persistence identity, generic mapping of pre-dispatch candidate-budget ValueError, failed-start cleanup risk in the proxy checker, missing NNP assertion in static preflight and firewall unit lifecycle gaps. These findings and proposed checks are in REVIEW.md; no implementation was changed.
+
+Documentation validation passed for REVIEW.md, PROGRESS.md and VALIDATION.md: local links, whitespace, balanced fences and final newlines; `git diff --check` passed. No dependency operation, container start, host mutation, live inference, full backend/browser rerun or commit occurred.
+
 ## Follow-up review checks — 2026-10-09, baseline `4959867`
 
 Fresh `python3 scripts/test_fetch_rules.py`: 7 passed, exit 0, 2.187s. Fresh `bash -n deploy/fetch-control-rules.sh scripts/test-fetch-control-harness.sh`: exit 0. Neither check applies real host rules or creates Docker resources.
@@ -286,27 +296,33 @@ Addressed the review findings in [REVIEW.md](REVIEW.md) and [ADVISE.md](ADVISE.m
    - Added `test_apply_failure_rolls_back_partially_installed_rules` simulating failure on the 5th insertion after 4 successful insertions, verifying 0 rules remain.
    - Fresh offline check: all 7 tests in `scripts/test_fetch_rules.py` pass (exit 0, 1.89s).
 
-2. **Docker internal-network DNS baseline demonstration (resolver path remains open blocker):**
-   - Created disposable `--internal` Docker bridge network on this daemon; confirmed that external DNS (`nslookup google.com`) unconditionally fails with `SERVFAIL` from `127.0.0.11:53` without any firewall rules, whereas internal service-name lookup (`nslookup c1`) succeeds. On a standard non-internal bridge, external forwarding succeeds. Dual-homed containers (internal + non-internal bridge) forward external DNS. This confirms Moby libnetwork behavior (`sandbox_dns_unix.go:startResolver`).
-   - Root cause in application: `backend/app/fetcher/http.py:89` calls `getaddrinfo` locally in `resolve_public(url)` before proxying to verify `is_global`. On an internal-only topology where both `fetch_control` and `fetch` are `--internal`, this lookup fails with `FetchFailure("source_dns")`.
-   - REVIEW item 2 remains an OPEN blocker pending proof of a demonstrated restricted resolver path (e.g. topology adjustment with `fetch` bridge, dedicated resolver container, or proxy delegation).
-   - Updated `scripts/test-fetch-control-harness.sh` to baseline both internal service DNS and external DNS pre-rules, preserve probe output/diagnostics/exit status, and verify container and host listener liveness before and after probes.
+2. **Fetcher DNS resolution and destination enforcement (Option C: proxy delegation):**
+   - Implemented proxy delegation in `backend/app/fetcher/http.py`: `resolve_public(url, proxy_url=self.config.proxy_url)` immediately validates IP literals locally without DNS (rejecting `127.0.0.1`, `192.168.x.x`, `10.x.x.x`, `::1` with `destination_denied`).
+   - When local DNS fails with `OSError` (the demonstrated behavior of Docker's internal-only bridge topology), and a proxy is configured, resolution and connection-time destination filtering are delegated to Squid (`egress-proxy:3128`), which resolves hostnames over `public_outbound` and enforces `acl nonpublic dst` at connection time.
+   - Mapped Squid 403 `ERR_ACCESS_DENIED` to `FetchFailure("destination_denied")`, Squid 503 `ERR_DNS_FAIL` to `FetchFailure("source_dns")`, and HTTPS CONNECT proxy error 403 to `FetchFailure("destination_denied")`.
+   - All 26 fetcher unit tests pass (exit 0, 3.51s).
+
 3. **Jev Decisions matching adapter (Phase D offline implementation):**
    - Implemented 5-anchor relevance scoring mapped by `round_half_up(25 * native_score)` to 0..100; tested boundary scores (native 1.16->29, 1.18->30, 1.22->31, 2.36->59, 2.38->60) and half-ties.
-   - Bounded exact quotation candidates (<= 500 chars) presented in full in question criteria; candidate budget capped at `MAX_CANDIDATES_PER_SPAN = 50` with visible `ValueError` on overflow; tested with 3,522-character description verifying duty at character 3,500 is in candidate pool and validates.
+   - Bounded exact quotation candidates (<= 500 chars) presented in full in question criteria; candidate budget capped at `MAX_CANDIDATES_PER_SPAN = 50` with visible `OperationError("ai_input_too_large")` at task boundary; tested with 3,522-character description verifying duty at character 3,500 is in candidate pool and validates.
+   - Removed mechanical profile fallback for score evidence: when a relevance score is assigned, `score_profile_evidence` strictly requires a selected profile candidate; missing or `insufficient` raises `ValueError("relevance score outcome lacks selected profile support")`. Tested with specific candidate skill citation.
    - Implemented dynamic `domain_status` and `domain_evidence` for `focus` domain mode; verified domain conflict derives `not_match`, and unsupported known domain outcomes (`met` or `not_met` with insufficient evidence) are rejected with `ValueError`.
    - Implemented dynamic `important_unknowns` Choice question; verified that `score >= 60` with `important_unknowns=false` derives `match`.
-   - Implemented Choice `plausible_connection` (supported / unsupported / unknown) without probability coercion; verified unknown does not coerce to true, and supported connection requires selected profile candidate evidence without mechanical summary/experience fallbacks.
+   - Implemented Choice `plausible_connection` (supported / unsupported / unknown) without probability coercion; verified unknown does not coerce to true, and supported connection strictly requires selected profile candidate evidence without mechanical summary/experience fallbacks.
    - Implemented per-criterion comparability check (`preference:{id}:comparability`), ensuring incomparable terms (e.g. salary) stay unknown with `comparable=False`.
    - Re-versioned policy to `POLICY_VERSION = "broad-v2"` and prompt/schema to `"matching-decisions-v2"`, ensuring old assessments are treated as historical.
-   - Full backend regression suite: all 330 tests pass (exit 0, 66.77s) against the disposable PostgreSQL 17 test database.
+   - Full backend regression suite: all 340 tests pass (exit 0, 68.26s) against the disposable PostgreSQL 17 test database.
+
 4. **Budget and durable ledger reconciliation:**
    - Durable ledger `.data/live_run_ledger.json` records 2 attempts, US$0.000020042 known spend, US$0 held spend.
    - Owner confirmed on 2026-10-09 that the US$1 cap is an advisory validation budget, with the key's $5 monthly limit as an outer provider backstop.
    - Remaining allowance under advisory cap: 58 attempts, US$0.999979958.
 
-5. **Runtime blocker (Snap Docker NoNewPrivs EPERM):**
-   - Observed on this host: running any container with `--security-opt no-new-privileges:true` (or Compose `security_opt: [no-new-privileges:true]`) fails during `execve` with exit 255 and `operation not permitted` (`EPERM`). Tested across `alpine`, `ubuntu/squid`, user 0, user 13, seccomp/AppArmor unconfined. Control runs without NNP succeed (exit 0). Daemon is Canonical Snap package (`docker 29.8.0`, rev 3613). Suspected cause: Snap AppArmor confinement denying domain transitions under `PR_SET_NO_NEW_PRIVS`. Runtime security flags are preserved; requested owner inspection of `sudo dmesg -T | grep -E "apparmor|audit|DENIED" | tail -30`.
+5. **Runtime blocker (Snap Docker NoNewPrivs EPERM - confirmed by kernel audit):**
+   - Owner provided kernel audit log records from `sudo dmesg -T | grep -E "apparmor|audit|DENIED" | tail -30`:
+     `apparmor="DENIED" operation="exec" class="file" info="no new privs" error=-1 profile="snap.docker.dockerd" name="/bin/echo" pid=274035 comm="runc:[2:INIT]" requested_mask="x" denied_mask="x" fsuid=0 ouid=0 target="docker-default"`
+   - Confirms that the Snap confinement profile `snap.docker.dockerd` on Ubuntu Noble denies `execve` into container profiles when `PR_SET_NO_NEW_PRIVS` is set.
+   - Runtime hardening flags (`security_opt: [no-new-privileges:true]`) in `compose.yaml` are strictly preserved and asserted by `scripts/check-deployment.py`. Container cleanup in `scripts/check-proxy.py` guaranteed even on startup failure.
 
 6. **Limits:**
    - No new live inference requests were made in this session (spend remains US$0.000020042).

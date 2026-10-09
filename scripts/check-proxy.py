@@ -99,9 +99,7 @@ def main() -> None:
         print(f"{len(cases)} ACL checks passed; public connections lack a route by design.")
         print("This does not validate Compose bypass resistance or DNS rebinding.")
     finally:
-        if started:
-            docker("rm", "-f", name)
-
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False)
 
 if __name__ == "__main__":
     main()

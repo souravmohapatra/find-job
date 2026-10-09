@@ -44,6 +44,9 @@ def check(config: dict) -> None:
         )
         assert service.get("network_mode") != "host", "Host networking is development-only"
         assert not service.get("privileged"), "Privileged services are not permitted"
+        assert "no-new-privileges:true" in service.get("security_opt", []), (
+            f"Service {name} must enforce no-new-privileges:true"
+        )
         assert not service.get("ports") or name == "edge", "Only edge may publish ports"
         assert not any("docker.sock" in str(volume) for volume in service.get("volumes", []))
         if not service.get("build"):

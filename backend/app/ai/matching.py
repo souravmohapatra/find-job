@@ -222,6 +222,17 @@ def decisions_adapter(
                 ),
             },
         ),
+        "score_profile_evidence": DecisionsQuestion(
+            type="choice",
+            instructions=(
+                "Which profile candidate indicates the skills or experience supporting"
+                " the relevance score? Select insufficient if unevidenced or unknown."
+            ),
+            criteria={
+                **{c.candidate_id: c.text for c in profile_candidates},
+                "insufficient": "No supporting profile evidence",
+            },
+        ),
         "plausible_connection": DecisionsQuestion(
             type="choice",
             instructions=(
@@ -407,9 +418,18 @@ def decisions_adapter(
             if (not duties_unknown and primary_choice in candidates)
             else function_evidence[0]
         )
-        score_evidence = (
-            [primary_ref, cite_span("profile:experience")] if relevance_score is not None else []
-        )
+        if relevance_score is not None:
+            score_prof_ev = answers.get("score_profile_evidence")
+            if (
+                not score_prof_ev
+                or not isinstance(score_prof_ev, ChoiceAnswer)
+                or score_prof_ev.choice == "insufficient"
+                or (score_prof_ev.choice not in candidates and score_prof_ev.choice not in lookup)
+            ):
+                raise ValueError("relevance score outcome lacks selected profile support")
+            score_evidence = [primary_ref, cite_candidate(score_prof_ev.choice)]
+        else:
+            score_evidence = []
 
         connection_answer = answers["plausible_connection"]
         assert isinstance(connection_answer, (ChoiceAnswer, NoulAnswer))
@@ -558,7 +578,18 @@ def assess(
     is_decisions = (
         config_id is not None and stored_protocol(config_id, "job_matching") == "decisions"
     )
-    decisions = decisions_adapter(facts, preferences, posting, spans) if is_decisions else None
+    try:
+        decisions = decisions_adapter(facts, preferences, posting, spans) if is_decisions else None
+    except ValueError as error:
+        if "exceeds candidate budget" in str(error):
+            from app.services.operations import OperationError
+
+            raise OperationError(
+                "ai_input_too_large",
+                "The posting description exceeds candidate evidence capacity. Provide a shorter document.",
+                blocked=True,
+            ) from error
+        raise
     return infer(
         "job_matching",
         config_id,

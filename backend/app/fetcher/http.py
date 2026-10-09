@@ -8,6 +8,7 @@ from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
+
 from app.collection.contracts import public_link
 from app.fetcher import governor
 from app.fetcher.contracts import MAX_BODY, FetchFailure, FetchRequest, FetchResult
@@ -30,16 +31,35 @@ def retry_delay(value: str | None) -> int | None:
         return 60
 
 
-async def resolve_public(url: str) -> None:
-    host = urlsplit(public_link(url)).hostname
+async def resolve_public(url: str, *, proxy_url: str = "") -> None:
+    try:
+        clean_url = public_link(url)
+    except ValueError:
+        raise FetchFailure("destination_denied") from None
+    host = urlsplit(clean_url).hostname
     assert host is not None
+    # 1. Immediate local rejection of non-global IP literals (requires no network or DNS).
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+        if not ip.is_global:
+            raise FetchFailure("destination_denied")
+        return
+    except ValueError:
+        pass  # It's a hostname, not an IP literal.
+    # 2. Local DNS resolution where available.
     try:
         records = await asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM)
+        if not records or any(
+            not ipaddress.ip_address(record[4][0]).is_global for record in records
+        ):
+            raise FetchFailure("destination_denied")
     except OSError:
-        raise FetchFailure("source_dns", retry_after=60) from None
-    if not records or any(not ipaddress.ip_address(record[4][0]).is_global for record in records):
-        raise FetchFailure("destination_denied")
-    # Proxy destination ACLs must repeat this restriction at connection time.
+        # In internal-only container topologies, the local resolver cannot forward external DNS.
+        # When a proxy is configured on this instance, resolution and connection-time destination
+        # checks are enforced by the proxy (Squid dst ACLs). When no proxy is configured,
+        # fail with source_dns.
+        if not proxy_url:
+            raise FetchFailure("source_dns", retry_after=60) from None
 
 
 async def body_bytes(response: httpx.Response, limit: int) -> bytes:
@@ -86,7 +106,7 @@ class Fetcher:
         self, client: httpx.AsyncClient, url: str, headers: dict[str, str], limit: int
     ) -> FetchResult:
         url = public_link(url)
-        await resolve_public(url)
+        await resolve_public(url, proxy_url=self.config.proxy_url)
         parts = urlsplit(url)
         origin = f"{parts.scheme}://{parts.netloc}"
         if origin not in self.origins:
@@ -110,6 +130,17 @@ class Fetcher:
             )
             response = await client.send(request, stream=True)
             try:
+                if response.status_code == 403:
+                    squid_err = response.headers.get("x-squid-error", "")
+                    if (
+                        "ERR_ACCESS_DENIED" in squid_err
+                        or "squid" in response.headers.get("server", "").lower()
+                    ):
+                        raise FetchFailure("destination_denied")
+                if response.status_code == 503:
+                    squid_err = response.headers.get("x-squid-error", "")
+                    if "ERR_DNS_FAIL" in squid_err:
+                        raise FetchFailure("source_dns", retry_after=60)
                 retry = retry_delay(response.headers.get("retry-after"))
                 if response.status_code in {429, 503}:
                     retry = retry if retry is not None else 60
@@ -216,5 +247,10 @@ class Fetcher:
                 return await self.chain(client, request.url, headers, MAX_BODY, robots=True)
         except ValueError:
             raise FetchFailure("destination_denied") from None
+        except httpx.ProxyError as error:
+            err_str = str(error)
+            if "403" in err_str or "Forbidden" in err_str:
+                raise FetchFailure("destination_denied") from None
+            raise FetchFailure("source_transport", retry_after=60) from None
         except (TimeoutError, httpx.HTTPError):
             raise FetchFailure("source_transport", retry_after=60) from None

@@ -4,26 +4,32 @@ Historical private-registry endpoints in this document are anonymized as `packag
 
 Updated: 2026-10-09. Runtime blocker identified: Snap Docker NoNewPrivs EPERM; fetch isolation DNS blocker and matching acceptance remain open.
 
-## Runtime blocker: Snap Docker NoNewPrivs EPERM — 2026-10-09
+## Agent-oriented review checkpoint — 2026-10-09 (completed; documentation only)
+
+Owner requested another detailed review with clear blocker diagnosis/continuation instructions in REVIEW.md, ideas/comments only. Baseline `72cb6df`; existing AGENTS.md edit is preserved. No implementation, dependency work, live call, container start, host mutation or commit is authorized by this review. `.agent` remains absent; no initialization agreement has been received.
+
+Fresh checks: `python3 scripts/test_fetch_rules.py` passed 7 tests (2.126s, exit 0); shell syntax passed. Isolated matching source/domain checks verified late-duty coverage, explicit candidate overflow refusal, rejection of both unsupported known domain outcomes and selected skill evidence for a supported connection. Score evidence still cites aggregate experience mechanically. These checks use synthetic data only and no provider/database/network/state writes. Recorded 330-test backend pass was inspected, not rerun.
+
+Read-only runtime metadata access: `docker version --format 'client={{.Client.Version}} server={{.Server.Version}}'` exited 1 with `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`; client version is 29.1.5, server version could not be read. This reviewer-access limit is distinct from the target-host recorded NNP/EPERM failure and does not confirm or refute its suspected Snap/AppArmor cause. Official kernel NNP and Docker AppArmor documentation were read to distinguish general mechanisms from this unconfirmed host diagnosis.
+
+Added the latest agent continuation review at the top of REVIEW.md, retaining the prior reviews as historical. It orders the recorded target NNP/EPERM startup blocker before restricted DNS/fetch acceptance, separates this reviewer's socket-access failure, provides exact diagnosis/evidence/owner-input requirements and gives safe remedy options with closure criteria. It verifies recent matching corrections while identifying remaining score-evidence, unchanged assessment identity, candidate-limit error mapping, proxy-start cleanup, static hardening-check and firewall-lifecycle concerns. Advice only: implementation and host remedies were not started.
+
+Next assigned implementation/investigation action: establish intended daemon identity and correlate the recorded NNP failure with narrowly scoped kernel/audit evidence, keeping the Snap/AppArmor explanation a hypothesis; then prepare a supported runtime remedy and the smallest complete restricted DNS proof. Preserve security flags and fetching-disabled defaults. The latest explicit cumulative US$1/60-request instructions control over older advisory-cap notes; R1/N1 investigation requires no inference call. REVIEW.md, PROGRESS.md and VALIDATION.md remain uncommitted. Documentation links, whitespace, final newlines/fences and `git diff --check` passed. Existing AGENTS.md work is preserved; no `.agent` was initialized without agreement.
+
+## Runtime blocker: Snap Docker NoNewPrivs EPERM — 2026-10-09 (confirmed by kernel audit)
 
 A runtime blocker was observed on this host during preflight and container checks: any container executed with `--security-opt no-new-privileges:true` (or Compose `security_opt: [no-new-privileges:true]`) fails during `execve` with exit status 255 and `operation not permitted` (`EPERM`).
 
-- **Exact observations and commands:**
-  - Failing: `docker run --rm --security-opt no-new-privileges:true alpine:latest echo OK` -> `exec /bin/echo: operation not permitted` (exit status 255).
-  - Control: `docker run --rm alpine:latest echo OK` -> `OK` (exit status 0).
-  - Compose service test with `security_opt: [no-new-privileges:true]` -> `exec /bin/echo: operation not permitted` (exit status 255).
-  - Control without `security_opt` -> `OK` (exit status 0).
-  - Tested across multiple container images (`ubuntu/squid`, `alpine`) and execution contexts (user `13:13`, user `0:0`, seccomp unconfined, AppArmor unconfined): all fail identically with `EPERM` when `no-new-privileges` is enabled.
-  - Host daemon environment: Canonical Snap package (`snap list docker`: `docker 29.8.0`, rev 3613, overlay2 storage path `/var/snap/docker/common/var-lib-docker/...`).
+- **Kernel audit evidence (provided by owner via `sudo dmesg -T | grep -E "apparmor|audit|DENIED" | tail -30`):**
+  - `audit: type=1400 ... apparmor="DENIED" operation="exec" class="file" info="no new privs" error=-1 profile="snap.docker.dockerd" name="/bin/echo" pid=274035 comm="runc:[2:INIT]" requested_mask="x" denied_mask="x" fsuid=0 ouid=0 target="docker-default"`
+  - Also logged for `/usr/sbin/squid`, `/bin/sh`, `/bin/ls`, `/bin/cat`, and `target="unconfined"`.
+  - **Root cause confirmed:** Under Ubuntu's AppArmor confinement profile for the Canonical Snap package of Docker (`profile="snap.docker.dockerd"`), when runc sets `PR_SET_NO_NEW_PRIVS`, AppArmor denies the execution transition into `target="docker-default"` (or `target="unconfined"`), returning `error=-1` (`EPERM`).
+  - Host environment: Canonical Snap package (`snap list docker`: `docker 29.8.0`, rev 3613, overlay2 storage path `/var/snap/docker/common/var-lib-docker/...`).
+  - Host daemon inventory: 25+ existing personal containers (media stack, n8n, tandoor, opengym, ntfy, etc.) run on this snap daemon.
 
-- **Suspected cause (labeled unconfirmed until kernel audit evidence):**
-  - Under Ubuntu's Snap confinement (`snap.docker.dockerd`), setting `PR_SET_NO_NEW_PRIVS` appears to trigger AppArmor denial of domain transitions on `execve` into container execution profiles, returning `EPERM`. This is a suspected cause; kernel audit records are required to confirm.
-
-- **Action and boundaries:**
-  - Runtime flags (`security_opt: [no-new-privileges:true]`) in `compose.yaml` and `scripts/check-proxy.py` are PRESERVED and not weakened or removed.
-  - Requested from owner: inspect kernel audit/AppArmor log records for the exact denial:
-    `sudo dmesg -T | grep -E "apparmor|audit|DENIED" | tail -30`
-
+- **Remedy and boundaries:**
+  - Runtime hardening flags (`security_opt: [no-new-privileges:true]`) in `compose.yaml` and `scripts/check-proxy.py` are strictly preserved and not weakened.
+  - No daemon uninstallation, snap purge, volume migration, or daemon restart has been performed or authorized. Replacing the Snap daemon with standard native `docker-ce` is a host-level migration affecting all existing services and requires an inventory, preservation plan, and explicit owner authorization before any action.
 ## Follow-up review checkpoint — 2026-10-09 (completed; no commit requested)
 
 Owner requested reviewing the latest findings/blocker/mistakes, adding the result to REVIEW.md without committing, and identifying owner inputs needed to unblock the agent. Baseline is `4959867`; worktree was clean at intake. Fresh `python3 scripts/test_fetch_rules.py`: 7 passed, exit 0, 2.187s. `bash -n deploy/fetch-control-rules.sh scripts/test-fetch-control-harness.sh`: exit 0. These checks do not exercise host rules or Docker networking.

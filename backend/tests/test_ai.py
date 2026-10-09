@@ -770,6 +770,7 @@ def test_matching_decisions_adapter_builds_validated_assessment() -> None:
         "relevance_band": ScoreAnswer(score=2.0),
         "plausible_connection": NoulAnswer(noul=0.9),
         "connection_evidence": ChoiceAnswer(choice="profile:summary"),
+        "score_profile_evidence": ChoiceAnswer(choice="profile:summary"),
     }
     assessment = decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(answers)
     assert assessment.relevance_score == 50 and assessment.relation == "aligned"
@@ -805,6 +806,36 @@ def test_matching_decisions_adapter_builds_validated_assessment() -> None:
     )
     assert conflict.domain_status == "not_met"
     assert category(conflict, focus_prefs) == "not_match"
+    # Relevance score without profile support raises ValueError
+    with pytest.raises(ValueError, match="lacks selected profile support"):
+        decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(
+            {
+                **answers,
+                "score_profile_evidence": ChoiceAnswer(choice="insufficient"),
+            }
+        )
+    no_score_ev = {k: v for k, v in answers.items() if k != "score_profile_evidence"}
+    with pytest.raises(ValueError, match="lacks selected profile support"):
+        decisions_adapter(FACTS, PREFERENCES, posting, spans).interpret(no_score_ev)
+
+    # Selecting specific profile skill candidate cites the skill, not experience totals
+    from app.domain.profile import Span as CustomSpan
+
+    skill_spans = [
+        CustomSpan(
+            id="profile:skill:strategy:0", text="Strategic commercial planning and portfolio growth"
+        ),
+        *spans,
+    ]
+    skill_adapter = decisions_adapter(FACTS, PREFERENCES, posting, skill_spans)
+    skill_assessment = skill_adapter.interpret(
+        {
+            **answers,
+            "score_profile_evidence": ChoiceAnswer(choice="cand:profile:skill:strategy:0:0"),
+        }
+    )
+    assert any("Strategic commercial planning" in e.quote for e in skill_assessment.score_evidence)
+    validate(skill_assessment, PREFERENCES, skill_spans)
 
     # Unsupported focus-domain outcomes (met or not_met with insufficient evidence) are rejected
     with pytest.raises(ValueError, match="lacks selected domain support"):
@@ -873,6 +904,7 @@ def test_matching_decisions_preference_outcome_requires_selected_support() -> No
         "plausible_connection": NoulAnswer(noul=0.2),
         f"preference:{criterion.id}": ChoiceAnswer(choice="met"),
         f"preference:{criterion.id}:evidence": ChoiceAnswer(choice="insufficient"),
+        "score_profile_evidence": ChoiceAnswer(choice="profile:summary"),
     }
     with pytest.raises(ValueError):
         decisions_adapter(FACTS, preferences, posting, spans).interpret(base)
@@ -895,6 +927,7 @@ def test_matching_decisions_ambiguous_connection_does_not_coerce_to_true() -> No
         "primary_function": ChoiceAnswer(choice="job:description"),
         "relation": ChoiceAnswer(choice="aligned"),
         "relevance_band": ScoreAnswer(score=2.0),
+        "score_profile_evidence": ChoiceAnswer(choice="profile:summary"),
     }
 
     # "unknown" connection choice must NOT be coerced to True
@@ -989,6 +1022,7 @@ def test_matching_decisions_incomparable_salary_stays_unknown() -> None:
         "important_unknowns": ChoiceAnswer(choice="false"),
         f"preference:{salary_crit.id}": ChoiceAnswer(choice="not_met"),
         f"preference:{salary_crit.id}:evidence": ChoiceAnswer(choice="job:description"),
+        "score_profile_evidence": ChoiceAnswer(choice="profile:summary"),
     }
 
     # When terms are incomparable (e.g. currency/period mismatch),
@@ -1044,6 +1078,7 @@ def test_matching_decisions_round_half_up_boundaries() -> None:
         "relation": ChoiceAnswer(choice="aligned"),
         "plausible_connection": NoulAnswer(noul=0.9),
         "connection_evidence": ChoiceAnswer(choice="profile:summary"),
+        "score_profile_evidence": ChoiceAnswer(choice="profile:summary"),
     }
 
     # 1.22 * 25 = 30.5 -> half-up 31 (not banker's 30)
@@ -1114,6 +1149,7 @@ def test_matching_decisions_late_in_candidate_evidence() -> None:
         "relevance_band": ScoreAnswer(score=3.0),
         "plausible_connection": NoulAnswer(noul=0.9),
         "connection_evidence": ChoiceAnswer(choice="profile:summary"),
+        "score_profile_evidence": ChoiceAnswer(choice="profile:summary"),
         "important_unknowns": ChoiceAnswer(choice="false"),
     }
     assessment = task.interpret(answers)
@@ -1171,6 +1207,7 @@ def test_matching_decisions_candidate_budget_beyond_six_chunks() -> None:
         "score_sufficiency": ChoiceAnswer(choice="sufficient"),
         "plausible_connection": ChoiceAnswer(choice="supported"),
         "connection_evidence": ChoiceAnswer(choice="profile:summary"),
+        "score_profile_evidence": ChoiceAnswer(choice="profile:summary"),
         "important_unknowns": ChoiceAnswer(choice="false"),
     }
     assessment = task.interpret(answers)
@@ -1234,6 +1271,7 @@ def test_assess_decisions_enforces_domain_validation_end_to_end(
                 "score_sufficiency": {"type": "choice", "choice": "sufficient"},
                 "plausible_connection": {"type": "choice", "choice": "supported"},
                 "connection_evidence": {"type": "choice", "choice": "profile:summary"},
+                "score_profile_evidence": {"type": "choice", "choice": "profile:summary"},
                 "important_unknowns": {"type": "choice", "choice": "false"},
             }
         )
@@ -1247,6 +1285,26 @@ def test_assess_decisions_enforces_domain_validation_end_to_end(
     with Session(get_engine()) as db:
         call = db.scalar(select(InferenceCall))
         assert call and call.state == "invalid" and call.reported_usd == Decimal("0.00002")
+
+
+def test_assess_decisions_maps_candidate_budget_overflow_to_operation_error() -> None:
+    from app.ai.matching import assess
+    from app.collection.contracts import Posting
+    from tests.synthetic_matching import FACTS, PREFERENCES
+
+    identifier = decision_configuration()
+    huge_posting = Posting(
+        external_id="huge-job",
+        title="Strategy Director",
+        description="Huge sentence duty.\n\n" * 1500,
+        url="https://jobs.example.com/huge",
+        apply_url="https://jobs.example.com/huge/apply",
+        locations=["London"],
+    )
+    with pytest.raises(OperationError) as raised:
+        assess(FACTS, PREFERENCES, huge_posting, identifier, None)
+    assert raised.value.code == "ai_input_too_large"
+    assert raised.value.blocked is True
 
 
 def test_decisions_live_dispatch_blocked_by_default(

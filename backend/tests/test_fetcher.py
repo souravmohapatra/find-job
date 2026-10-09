@@ -4,13 +4,14 @@ import json
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
+
 from app.fetcher import governor
 from app.fetcher import http as fetch_http
 from app.fetcher.contracts import FetchFailure, FetchRequest, FetchResult
 from app.fetcher.http import Fetcher, body_bytes
 from app.fetcher.main import create_app
 from app.fetcher.settings import FetchSettings
-from fastapi.testclient import TestClient
 
 
 class Stream(httpx.AsyncByteStream):
@@ -26,7 +27,7 @@ def setup_fetcher(tmp_path, monkeypatch, handler):
     fetcher = Fetcher(config)
     calls = []
 
-    async def public(url):
+    async def public(url, *args, **kwargs):
         calls.append(url)
 
     monkeypatch.setattr(fetch_http, "resolve_public", public)
@@ -316,3 +317,80 @@ def test_redirect_back_to_original_still_reports_lost_conditional_headers(tmp_pa
     fetcher, _ = setup_fetcher(tmp_path, monkeypatch, handler)
     result = asyncio.run(fetcher.fetch(FetchRequest(url="https://example.com/jobs", etag='"v1"')))
     assert result.url == "https://example.com/jobs" and result.redirected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/admin",
+        "http://192.168.1.1/router",
+        "http://10.0.0.1/internal",
+        "http://169.254.169.254/latest/meta-data",
+        "http://[::1]/private",
+        "http://[fe80::1]/link-local",
+        "http://[fc00::1]/unique-local",
+    ],
+)
+def test_resolve_public_rejects_private_ip_literals_immediately(url):
+    with pytest.raises(FetchFailure, match="destination_denied"):
+        asyncio.run(fetch_http.resolve_public(url, proxy_url="http://egress-proxy:3128"))
+
+
+def test_resolve_public_delegates_to_proxy_when_local_dns_unavailable(monkeypatch):
+    async def run():
+        async def failing_dns(*args, **kwargs):
+            raise OSError("name resolution failed on internal network")
+
+        monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", failing_dns)
+        # With proxy configured, resolve_public does not fail locally on source_dns
+        await fetch_http.resolve_public(
+            "https://example.com/jobs", proxy_url="http://egress-proxy:3128"
+        )
+        # Without proxy configured, local DNS failure raises source_dns
+        with pytest.raises(FetchFailure, match="source_dns"):
+            await fetch_http.resolve_public("https://example.com/jobs", proxy_url="")
+
+    asyncio.run(run())
+
+
+def test_squid_destination_denial_and_dns_failure_mapped_truthfully(tmp_path):
+    config = FetchSettings(state_file=tmp_path / "origins.sqlite3", isolation_verified=True)
+
+    # 403 Access Denied from Squid proxy is mapped to destination_denied
+    def denied_handler(request):
+        return httpx.Response(
+            403, headers={"x-squid-error": "ERR_ACCESS_DENIED 0", "server": "squid/6.13"}
+        )
+
+    fetcher_denied = Fetcher(config)
+    fetcher_denied.client = lambda: httpx.AsyncClient(transport=httpx.MockTransport(denied_handler))
+    with pytest.raises(FetchFailure, match="destination_denied"):
+        asyncio.run(fetcher_denied.fetch(FetchRequest(url="https://rebind.example.com/jobs")))
+
+    # 503 DNS failure from Squid proxy is mapped to source_dns
+    def dns_fail_handler(request):
+        return httpx.Response(
+            503, headers={"x-squid-error": "ERR_DNS_FAIL 0", "server": "squid/6.13"}
+        )
+
+    fetcher_dns_fail = Fetcher(config)
+    fetcher_dns_fail.client = lambda: httpx.AsyncClient(
+        transport=httpx.MockTransport(dns_fail_handler)
+    )
+    with pytest.raises(FetchFailure, match="source_dns"):
+        asyncio.run(
+            fetcher_dns_fail.fetch(FetchRequest(url="https://nonexistent.example.com/jobs"))
+        )
+
+    # HTTPS CONNECT ProxyError 403 is mapped to destination_denied
+    def connect_error_handler(request):
+        raise httpx.ProxyError("403 Forbidden while establishing CONNECT tunnel")
+
+    fetcher_connect = Fetcher(config)
+    fetcher_connect.client = lambda: httpx.AsyncClient(
+        transport=httpx.MockTransport(connect_error_handler)
+    )
+    with pytest.raises(FetchFailure, match="destination_denied"):
+        asyncio.run(
+            fetcher_connect.fetch(FetchRequest(url="https://private-rebind.example.com/jobs"))
+        )
