@@ -2,6 +2,28 @@
 
 Target: Ubuntu Server with Docker Engine and Docker Compose v2, reachable over the local network and local tailnet only. No public ingress, public DNS setup, router forwarding, Tailscale Funnel, or hosted application service is part of this design. Outbound access is needed for public job sites, search, OpenRouter inference, updates, and normal Tailscale connectivity.
 
+## Snap Docker startup compatibility — verified 2026-10-10
+
+This host's Snap daemon denies the AppArmor execution transition when Docker sets `no-new-privileges` before container startup. Docker migration is excluded. Set `DOCKER_NO_NEW_PRIVILEGES=false` in this deployment's ignored `deploy/.env` when preparing it; leave the default `true` on compatible runtimes. Do not change the daemon, its profiles or other projects.
+
+Every service entrypoint now runs `setpriv --no-new-privs` **after** Docker attaches its normal AppArmor profile and **before** the service command. Health checks and backup/restore payload helpers explicitly do the same. Application processes and their children therefore retain `NoNewPrivs: 1`; AppArmor, seccomp, dropped capabilities, non-root users, read-only filesystems and private networks remain in force where configured. `setpriv` is already installed in the pinned/runtime images; failure to enable NNP stops the payload rather than falling back. See the [setpriv manual](https://man7.org/linux/man-pages/man1/setpriv.1.html) and [kernel NNP semantics](https://docs.kernel.org/userspace-api/no_new_privs.html).
+
+For diagnostics and an isolated restore on this Snap host, export the same non-secret setting before invoking scripts (these commands create no production deployment):
+
+```sh
+export DOCKER_NO_NEW_PRIVILEGES=false
+python3 scripts/test_runtime_security.py
+python3 scripts/check-deployment.py
+python3 scripts/check-proxy.py
+python3 scripts/check-ntfy.py
+```
+
+The live proxy/ntfy checks require their documented cached project images and use disposable network-none containers. Compose startup and backup read `deploy/.env` through their existing `--env-file` paths; the tar backup helper uses the effective resolved setting. Diagnostic scripts and restore use the exported setting. Keep them consistent; do not rely on an unrelated root `.env` or automatically read provider credentials.
+
+This is process hardening, not a promise that every Docker-managed process has NNP. Docker's trusted initial launcher/init and ad-hoc `docker exec` sessions do not automatically inherit the flag when startup NNP is false. For administrative execution requiring it, use `docker compose --env-file deploy/.env exec SERVICE setpriv --no-new-privs COMMAND`. Configured service commands, their children and configured health checks are wrapped; container PID 1 may be Docker's init rather than the wrapped application. Verify the application process itself. Do not bypass entrypoints or disable AppArmor/seccomp as a workaround.
+
+Runtime startup/NNP and isolated ACL checks do not establish the full fetch-isolation matrix, private ingress, live matching or release acceptance. Fetching remains disabled pending those existing gates. Roll back the host compatibility selection by returning `DOCKER_NO_NEW_PRIVILEGES` to `true` on a runtime that supports it and recreating only Job Finder services; this known-incompatible Snap host would again encounter R1 if that selection were changed without a runtime fix.
+
 ## Compose topology
 
 | Service | Role | Persistent data |

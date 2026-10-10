@@ -1,5 +1,32 @@
 # Validation
 
+## R1 Snap compatibility implementation — 2026-10-10
+
+Baseline `55f0f25`. Actual daemon metadata: server 29.8.0, Snap data root, AppArmor and builtin seccomp active. No migration/daemon change. Explicit Docker startup setting false followed by in-container `setpriv --no-new-privs` enables the payload flag after profile attachment. Repository default stays true.
+
+Checks actually run:
+
+- `python3 scripts/test_runtime_security.py`: 3 passed, final run 0.451s, exit 0. Exercises default/compatibility selection, invalid value refusal, missing entrypoint/command/health wrapper, inconsistent startup options and malformed tmpfs rejection. The backup helper also propagates the selected setting.
+- `python3 scripts/check-deployment.py` and `DOCKER_NO_NEW_PRIVILEGES=false python3 scripts/check-deployment.py`: both exit 0. Configuration evidence only; no production secrets were read.
+- Project-configured Ruff lint and format checks on all seven changed/new scripts pass; `git diff --check` passes.
+- `DOCKER_NO_NEW_PRIVILEGES=false python3 scripts/check-proxy.py`: 20 real ACL cases passed, exit 0, including explicit proxy PID payload `NoNewPrivs: 1` assertion. Container network none, no ports/real targets.
+- `DOCKER_NO_NEW_PRIVILEGES=false python3 scripts/check-ntfy.py`: health, configured health argv, anonymous denial, publish-only token, reader-only access and cached receipt passed, exit 0; payload `NoNewPrivs: 1` asserted. Synthetic credentials/notifications inside a disposable network-none container, no recipients.
+- Cached Alpine/backend/Squid/Caddy/PostgreSQL/Python-helper launches succeeded through setpriv with Docker startup NNP false. Profiles reported `docker-default (enforce)` and payload NNP 1. Alpine probe additionally verified non-root UID, zero effective/bounding capabilities and seccomp mode 2. Caddy and Squid actual binaries executed; API/fetcher actual services passed health and application-process NNP checks under Docker init.
+- Actual Compose smoke used the final API/fetcher image, entrypoint, command, tmpfs, init, security and health settings projected into a unique network-none test project. `up -d --wait --wait-timeout 25 --pull never` and both payload NNP assertions passed. No ports, mounted secrets, data volumes or external network; project removed afterward. This checks runtime/command semantics, not full ten-service integration or current application-image rebuild.
+- PostgreSQL's actual wrapped entrypoint initialized in tmpfs, transitioned to its database user, reached final-process readiness and executed `SELECT 1`; NNP 1 verified. No network or ports.
+- Final recovery suite with `DOCKER_NO_NEW_PRIVILEGES=false` against a newly created, labelled, network-none disposable test PostgreSQL ran all 15 existing checks, including real encrypted volume archive, PostgreSQL roundtrip and full isolated restore: 15 passed, 14.155s, exit 0. It includes the final NNP-wrapped restore DB launcher. Test database/container/volumes removed; existing databases/services untouched.
+- Cleanup inspection found no `jobfinder-r1-*` containers left. Pinned Python/ntfy pulls each succeeded once; ntfy project image built from the cached base with network disabled and no package installation.
+
+Intermediate failures and limits:
+
+- Sandboxed synthetic recovery setup failed: unittest exit 5, underlying GPG key-generation exit 2, zero tests run. Authorized expanded execution passed the same synthetic suite (initially 12 passed/3 skipped), then the selected real archive test passed, then full Docker drills passed as above. No dependency workaround.
+- First PostgreSQL SQL probe reached its temporary initialization server and failed psql exit 2. Readiness was corrected to require PID 1 `postgres` before probing SQL; the corrected test passed.
+- First full-drill fixture missed `com.docker.compose.service=db`; suite exited 1 with KeyError, 14 checks passed. Added that label only to the next temporary harness DB; corrected final checks passed.
+- Initial Compose smoke discarded child stderr; a diagnostic rerun retained exit 1: `invalid mount path: 'mode=1777' mount path must be absolute`. This exposed existing unquoted flow-list tmpfs strings. All five specifications are now quoted; preflight rejects split options; final real Compose check passed. Explicit commands were also added because overriding entrypoint otherwise discards image CMD.
+- Initial lint invocation picked unrelated home defaults; applicable checks use `--config backend/pyproject.toml` and pass.
+
+NNP is verified for wrapped service/helper/health payloads and descendants. Trusted Docker launcher/init and arbitrary administrative exec sessions are not automatically protected in compatibility mode; wrap required admin commands as documented. No root `.env`/provider credentials or live ledger was read, no inference request was sent and no firewall/host policy changed. Full fetch-isolation/rebinding/browser matrix, private ingress, live matching, full production startup and deployed-device/recovery acceptance remain open. Backend/frontend suites were not rerun for these runtime/script-only changes.
+
 ## Agent continuation review checks — 2026-10-09, baseline `72cb6df`
 
 Fresh `python3 scripts/test_fetch_rules.py`: 7 passed, exit 0, 2.126s. `bash -n deploy/fetch-control-rules.sh scripts/test-fetch-control-harness.sh`: exit 0. Synthetic isolated matching source/domain checks confirmed duty coverage after character 3,500, visible refusal of a 26,000-character unbroken span exceeding the candidate budget, rejection of unsupported known focus-domain outcomes, and selected profile skill support for a connection. They also confirmed score evidence still mechanically references aggregate experience. No provider/database/network/state access was used by these self-checks.

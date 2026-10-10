@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from deployment_config import configuration
+from deployment_config import configuration, runtime_security_option
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,7 +20,6 @@ def main() -> None:
     config = configuration()
     image = config["services"]["egress-proxy"]["image"]
     name = "jobfinder-acl-check-" + uuid4().hex[:12]
-    started = False
     try:
         docker(
             "run",
@@ -39,17 +38,18 @@ def main() -> None:
             "--cap-drop",
             "ALL",
             "--security-opt",
-            "no-new-privileges:true",
+            runtime_security_option(config),
             "--entrypoint",
-            "/usr/sbin/squid",
+            "setpriv",
             "--mount",
             f"type=bind,src={ROOT / 'deploy/squid.conf'},dst=/etc/squid/squid.conf,readonly",
             image,
+            "--no-new-privs",
+            "/usr/sbin/squid",
             "-f",
             "/etc/squid/squid.conf",
             "-NYC",
         )
-        started = True
         for attempt in range(30):
             try:
                 docker("exec", name, "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3128")
@@ -58,6 +58,9 @@ def main() -> None:
                 if attempt == 29:
                     raise
                 time.sleep(0.1)
+        status = docker("exec", name, "cat", "/proc/1/status")
+        if "NoNewPrivs:\t1" not in status:
+            raise RuntimeError("Proxy payload did not enable no-new-privileges")
         hosts = [
             "127.0.0.1",
             "10.0.0.1",
@@ -100,6 +103,7 @@ def main() -> None:
         print("This does not validate Compose bypass resistance or DNS rebinding.")
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False)
+
 
 if __name__ == "__main__":
     main()

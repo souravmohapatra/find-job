@@ -8,11 +8,12 @@ import re
 import stat
 from pathlib import Path
 
-from deployment_config import configuration
+from deployment_config import configuration, runtime_security_option
 
 
 def check(config: dict) -> None:
     services = config["services"]
+    security_option = runtime_security_option(config)
     expected = {
         "db",
         "migrate",
@@ -44,9 +45,18 @@ def check(config: dict) -> None:
         )
         assert service.get("network_mode") != "host", "Host networking is development-only"
         assert not service.get("privileged"), "Privileged services are not permitted"
-        assert "no-new-privileges:true" in service.get("security_opt", []), (
-            f"Service {name} must enforce no-new-privileges:true"
+        assert service.get("security_opt") == [security_option], "Inconsistent startup hardening"
+        assert service.get("entrypoint", [])[:2] == ["setpriv", "--no-new-privs"], (
+            f"Service {name} must enable no-new-privileges before its payload"
         )
+        assert service.get("command"), "Wrapped entrypoints require an explicit service command"
+        assert all(path.split(":", 1)[0].startswith("/") for path in service.get("tmpfs", [])), (
+            "tmpfs options must remain in one quoted absolute mount specification"
+        )
+        if service.get("healthcheck"):
+            assert service["healthcheck"]["test"][:3] == ["CMD", "setpriv", "--no-new-privs"], (
+                "Health checks must enable no-new-privileges too"
+            )
         assert not service.get("ports") or name == "edge", "Only edge may publish ports"
         assert not any("docker.sock" in str(volume) for volume in service.get("volumes", []))
         if not service.get("build"):

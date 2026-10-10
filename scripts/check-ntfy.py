@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from deployment_config import configuration
+from deployment_config import configuration, runtime_security_option
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,7 +36,9 @@ def main() -> None:
             "--cap-drop",
             "ALL",
             "--security-opt",
-            "no-new-privileges:true",
+            runtime_security_option(),
+            "--entrypoint",
+            "setpriv",
             "--user",
             "10001:10001",
             "--tmpfs",
@@ -48,11 +50,16 @@ def main() -> None:
             "--mount",
             f"type=bind,src={ROOT / 'deploy/ntfy.yml'},dst=/etc/ntfy/server.yml,readonly",
             "jobfinder-ntfy:local",
+            "--no-new-privs",
+            "ntfy",
             "serve",
             "--config",
             "/etc/ntfy/server.yml",
         )
         started = True
+        status = docker("exec", name, "cat", "/proc/1/status").stdout
+        if "NoNewPrivs:\t1" not in status:
+            raise RuntimeError("ntfy payload did not enable no-new-privileges")
         for attempt in range(30):
             health = docker(
                 "exec",
@@ -72,8 +79,8 @@ def main() -> None:
             if attempt == 29:
                 raise RuntimeError("Disposable ntfy did not become healthy")
             time.sleep(0.2)
-        health_command = configuration()["services"]["ntfy"]["healthcheck"]["test"][1]
-        docker("exec", name, "/bin/sh", "-c", health_command)
+        health_command = configuration()["services"]["ntfy"]["healthcheck"]["test"]
+        docker("exec", name, *health_command[1:])
         password = "synthetic-disposable-password"
         for user, permission in (("publisher", "write-only"), ("reader", "read-only")):
             docker("exec", "-e", f"NTFY_PASSWORD={password}", name, "ntfy", "user", "add", user)

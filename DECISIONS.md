@@ -1,5 +1,11 @@
 # Decision register
 
+## R1 solution without Docker migration — 2026-10-10
+
+Owner assigned removal of the Snap Docker NNP startup blocker and explicitly excluded Docker migration. Selected and tested the smallest project-local workaround: keep Docker startup NNP enabled by default, allow explicit `DOCKER_NO_NEW_PRIVILEGES=false` for this Snap host, and always apply `setpriv --no-new-privs` inside the already-attached container profile before service/helper execution. Health checks use the same wrapper. Preflight rejects missing payload/health wrappers, inconsistent startup options and invalid setting values.
+
+This preserves NNP on application processes and their descendants, along with existing AppArmor/seccomp/user/capability/filesystem/network restrictions. The trusted initial launcher/init and arbitrary administrative Docker exec sessions are outside that inheritance; wrap required administrative commands explicitly. No daemon migration, restart, confinement change or global security relaxation is part of this solution. Activation and rollback are in DEPLOYMENT.md. R1 validation does not close DNS/fetch-isolation or release gates.
+
 ## Current deployment validation direction — 2026-10-09
 
 The owner assigned continuation on the deployment host under [FINISH_DEVELOPMENT_AND_VALIDATE.md](FINISH_DEVELOPMENT_AND_VALIDATE.md) and [DEPLOYMENT_API_VALIDATION.md](DEPLOYMENT_API_VALIDATION.md). The former development-network local live validation remains canceled.

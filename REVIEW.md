@@ -1,5 +1,13 @@
 # Progress, approach and attempts review
 
+## R1 implementation outcome — 2026-10-10
+
+The owner assigned implementation and excluded Docker migration. The project-local solution moves NNP activation to `setpriv --no-new-privs` inside the already-attached AppArmor profile. Docker startup NNP stays true by default; the explicit Snap setting is `DOCKER_NO_NEW_PRIVILEGES=false`. All service and health-check payloads are wrapped, and affected proxy/ntfy/backup/restore helpers share the effective setting. This supersedes the earlier instruction to preserve Docker's pre-transition flag unconditionally.
+
+Real disposable tests on Snap server 29.8.0 show `docker-default (enforce)`, payload `NoNewPrivs: 1` and successful service execution; startup compatibility does not require removing application NNP or migrating the daemon. Docker's initial trusted launcher/init and arbitrary Docker exec sessions remain outside the payload inheritance, so the solution is not identical to Docker-wide startup NNP. The default profile and other configured isolation controls remain intact. Deployment activation, administrative exec guidance and rollback are in DEPLOYMENT.md; actual evidence and remaining limits are in VALIDATION.md and PROGRESS.md.
+
+The DNS/proxy candidate still needs the actual network-boundary matrix. This runtime fix does not authorize fetching enablement, private ingress changes or paid model calls.
+
 ## Current agent continuation review — 2026-10-09, baseline `72cb6df`
 
 Purpose: give the implementing agent a concrete way to identify, remove and verify the current blockers. This is advice and source review only. It does not authorize host changes, installations, paid calls or implementation. Earlier reviews below are dated history; use the resolution status here before acting on them.

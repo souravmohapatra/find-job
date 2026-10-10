@@ -1,12 +1,15 @@
 name: jobfinder
 x-runtime: &runtime
   restart: unless-stopped
-  security_opt: [no-new-privileges:true]
+  # Snap Docker needs NNP set after the AppArmor transition; service payloads still enforce it.
+  security_opt: ['no-new-privileges:${DOCKER_NO_NEW_PRIVILEGES:-true}']
+  entrypoint: [setpriv, --no-new-privs]
   logging:
     driver: json-file
     options: {max-size: '10m', max-file: '3'}
 x-backend: &backend
   <<: *runtime
+  command: [uvicorn, app.main:app, --host, '0.0.0.0', --port, '8000', --no-proxy-headers]
   image: jobfinder-backend:local
   build:
     context: .
@@ -26,13 +29,15 @@ x-backend: &backend
   volumes: [documents:/data/documents]
   cap_drop: [ALL]
   read_only: true
-  tmpfs: [/tmp:size=128m,mode=1777]
+  tmpfs: ['/tmp:size=128m,mode=1777']
   init: true
   stop_grace_period: 45s
   pids_limit: 256
 services:
   db:
     <<: *runtime
+    entrypoint: [setpriv, --no-new-privs, docker-entrypoint.sh]
+    command: [postgres]
     image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:
       POSTGRES_DB: jobfinder
@@ -42,7 +47,7 @@ services:
     volumes: [postgres:/var/lib/postgresql/data]
     networks: [core]
     healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U jobfinder -d jobfinder']
+      test: [CMD, setpriv, --no-new-privs, pg_isready, -U, jobfinder, -d, jobfinder]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -68,7 +73,7 @@ services:
     depends_on:
       queue-bootstrap: {condition: service_completed_successfully}
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live', timeout=3)"]
+      test: [CMD, setpriv, --no-new-privs, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -109,14 +114,14 @@ services:
     volumes: [fetch_state:/data/fetcher]
     networks: [fetch_control, fetch]
     read_only: true
-    tmpfs: [/tmp:size=64m,mode=1777]
+    tmpfs: ['/tmp:size=64m,mode=1777']
     cap_drop: [ALL]
     mem_limit: 512m
     pids_limit: 128
     init: true
     depends_on: [egress-proxy]
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live', timeout=3)"]
+      test: [CMD, setpriv, --no-new-privs, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -124,10 +129,10 @@ services:
     <<: *runtime
     image: ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
     user: '13:13'
-    entrypoint: [/usr/sbin/squid]
+    entrypoint: [setpriv, --no-new-privs, /usr/sbin/squid]
     command: [-f, /etc/squid/squid.conf, -NYC]
     read_only: true
-    tmpfs: [/tmp:size=16m,mode=1777]
+    tmpfs: ['/tmp:size=16m,mode=1777']
     cap_drop: [ALL]
     volumes: [./deploy/squid.conf:/etc/squid/squid.conf:ro]
     networks: [fetch, public_outbound]
@@ -135,6 +140,7 @@ services:
     pids_limit: 128
   ntfy:
     <<: *runtime
+    entrypoint: [setpriv, --no-new-privs, ntfy]
     image: jobfinder-ntfy:local
     build:
       context: .
@@ -152,7 +158,11 @@ services:
     init: true
     healthcheck:
       test:
-        - CMD-SHELL
+        - CMD
+        - setpriv
+        - --no-new-privs
+        - /bin/sh
+        - -c
         - >-
           wget -q -T 3 -O - http://localhost:8080/v1/health |
           grep -Eq '"healthy"[[:space:]]*:[[:space:]]*true'
@@ -160,12 +170,13 @@ services:
       timeout: 5s
       retries: 5
     read_only: true
-    tmpfs: [/tmp:size=32m,mode=1777]
+    tmpfs: ['/tmp:size=32m,mode=1777']
     cap_drop: [ALL]
     mem_limit: 256m
     pids_limit: 128
   edge:
     <<: *runtime
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
     image: jobfinder-edge:local
     build:
       context: .
@@ -185,7 +196,7 @@ services:
       ntfy: {condition: service_healthy}
     user: '10001:10001'
     read_only: true
-    tmpfs: [/tmp:size=32m,mode=1777]
+    tmpfs: ['/tmp:size=32m,mode=1777']
     cap_drop: [ALL]
     mem_limit: 256m
     pids_limit: 128

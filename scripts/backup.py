@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from deployment_config import ROOT, configuration
+from deployment_config import ROOT, configuration, runtime_security_option
 from recovery import (
     VOLUMES,
     ciphertext_record,
@@ -66,7 +66,7 @@ def sync_directory(folder: Path) -> None:
         os.close(descriptor)
 
 
-def archive_command(volume: str, name: str) -> list[str]:
+def archive_command(volume: str, name: str, security_option: str | None = None) -> list[str]:
     return [
         "docker",
         "run",
@@ -81,12 +81,14 @@ def archive_command(volume: str, name: str) -> list[str]:
         "--cap-drop",
         "ALL",
         "--security-opt",
-        "no-new-privileges:true",
+        security_option if security_option is not None else runtime_security_option(),
         "--user",
         "10001:10001",
         "--mount",
         f"type=volume,src={volume},dst=/source,readonly",
         HELPER,
+        "setpriv",
+        "--no-new-privs",
         "python",
         "-c",
         "import sys,tarfile; t=tarfile.open(fileobj=sys.stdout.buffer,mode='w|'); "
@@ -199,7 +201,7 @@ def capture(compose: list[str], config: dict, folder: Path, home: Path, recipien
             name = "jobfinder-backup-" + uuid4().hex[:12]
             helper_names.append(name)
             target = folder / f"{logical}.tar.gpg"
-            command = archive_command(volume, name)
+            command = archive_command(volume, name, runtime_security_option(config))
             encrypt_command(command, target, home, recipient)
             payloads[target.name] = ciphertext_record(target)
         final_states = rows(run([*compose, "ps", "--all", "--format", "json"]))

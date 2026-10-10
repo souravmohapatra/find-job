@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from backup import HELPER, run, write_journal
-from deployment_config import configuration
+from deployment_config import configuration, runtime_security_option
 from recovery import MAX_PLAINTEXT, VOLUMES, gpg_base, private_directory, verify
 
 # Executed inside a network-none helper as the application's state-volume owner.
@@ -104,7 +104,7 @@ def restore(folder: Path, home: Path, destination: Path) -> dict:
                 "--cap-drop",
                 "ALL",
                 "--security-opt",
-                "no-new-privileges:true",
+                runtime_security_option(),
                 "--mount",
                 f"type=volume,src={volume},dst=/restore",
             ]
@@ -114,6 +114,8 @@ def restore(folder: Path, home: Path, destination: Path) -> dict:
                     "--cap-add",
                     "CHOWN",
                     HELPER,
+                    "setpriv",
+                    "--no-new-privs",
                     "python",
                     "-c",
                     "import os; os.chmod('/restore',0o700); os.chown('/restore',10001,10001)",
@@ -130,6 +132,8 @@ def restore(folder: Path, home: Path, destination: Path) -> dict:
                     "10001:10001",
                     "-i",
                     HELPER,
+                    "setpriv",
+                    "--no-new-privs",
                     "python",
                     "-c",
                     EXTRACT,
@@ -146,6 +150,10 @@ def restore(folder: Path, home: Path, destination: Path) -> dict:
                 "never",
                 "--network",
                 "none",
+                "--security-opt",
+                runtime_security_option(),
+                "--entrypoint",
+                "setpriv",
                 "--label",
                 f"jobfinder.restore={identifier}",
                 "--mount",
@@ -157,6 +165,8 @@ def restore(folder: Path, home: Path, destination: Path) -> dict:
                 "-e",
                 "POSTGRES_DB=jobfinder",
                 postgres,
+                "--no-new-privs",
+                "docker-entrypoint.sh",
                 "postgres",
                 "-c",
                 "listen_addresses=",

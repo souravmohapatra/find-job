@@ -9,6 +9,16 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def runtime_security_option(config: dict | None = None) -> str:
+    """Share the effective Docker startup setting with disposable helpers."""
+    options = (config if config is not None else configuration())["services"]["fetcher"][
+        "security_opt"
+    ]
+    if options not in (["no-new-privileges:true"], ["no-new-privileges:false"]):
+        raise ValueError("DOCKER_NO_NEW_PRIVILEGES must be true or false.")
+    return str(options[0])
+
+
 def configuration(env_file: Path | None = None) -> dict[str, Any]:
     environment = dict(os.environ)
     if env_file is None:
