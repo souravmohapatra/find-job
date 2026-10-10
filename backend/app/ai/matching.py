@@ -290,12 +290,14 @@ def decisions_adapter(
         questions["domain_evidence"] = DecisionsQuestion(
             type="choice",
             instructions=(
-                "Which job candidate indicates the industry or domain? Select insufficient"
-                " if unknown or unevidenced."
+                f"Which job candidate indicates the posting's industry or domain (whether "
+                f"matching or conflicting with {domains_str})? Select the candidate showing "
+                f"the posting's field, or select insufficient only if the listing provides "
+                f"no industry context."
             ),
             criteria={
                 **{c.candidate_id: c.text for c in job_candidates},
-                "insufficient": "No domain evidence",
+                "insufficient": "No industry or domain context provided in listing",
             },
         )
     for criterion in preferences.criteria:
@@ -586,7 +588,8 @@ def assess(
 
             raise OperationError(
                 "ai_input_too_large",
-                "The posting description exceeds candidate evidence capacity. Provide a shorter document.",
+                "The posting description exceeds candidate evidence capacity. "
+                "Provide a shorter document.",
                 blocked=True,
             ) from error
         raise

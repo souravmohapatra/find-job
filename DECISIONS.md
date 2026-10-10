@@ -12,11 +12,23 @@ The owner assigned continuation on the deployment host under [FINISH_DEVELOPMENT
 
 Active models: `openai/gpt-6-luna` for profile analysis and job extraction, and TypeSafe Jev (`typesafe/jev-1.13`) for job matching, through OpenRouter. Jev task-boundary adapter is implemented per the Phase D contract: fail-closed typed normalization, 5-anchor relevance scoring mapped by `round_half_up(25 * native_score)` to 0..100, dynamic `domain_status` enforcing `focus` mode, dynamic `important_unknowns`, bounded exact evidence candidates (<= 500 chars), separate score sufficiency, non-coerced connection choices (supported/unsupported/unknown), strict candidate-supported score evidence provenance, and per-criterion comparability checks; versioned under `broad-v3` and `matching-decisions-v3`. 340 backend tests pass.
 
-Budget reconciliation: On 2026-10-09, the owner confirmed that the **US$1 cap is an advisory validation budget**, not a hard provider-side ceiling, and the provider key's $5 monthly limit serves as an outer backstop. Any single call or batch exceeding US$1 halts for owner review. The durable ledger (`.data/live_run_ledger.json`) enforces admissions. Recorded activity on the deployment host: **19 inference attempts, US$0.000836348 known spend, US$0 held spend**, and 5 key-metadata GETs. Remaining allowance under the advisory cap: **41 attempts, US$0.999163652**.
+Budget reconciliation: On 2026-10-09, the owner confirmed that the **US$1 cap is an advisory validation budget**, not a hard provider-side ceiling, and the provider key's $5 monthly limit serves as an outer backstop. Any single call or batch exceeding US$1 halts for owner review. The durable ledger (`.data/live_run_ledger.json`) enforces admissions. Recorded activity on the deployment host: **46 inference attempts, US$0.004885158 known spend, US$0 held spend**, and 5 key-metadata GETs. Remaining allowance under the advisory cap: **14 attempts, US$0.995114842**.
 
-Verified gates: Basic live schema compatibility passed with `openai/gpt-6-luna` (structured output, generative profile analysis, and job extraction), and one contract-valid matching judgment passed with `typesafe/jev-1.13-20260917` Decisions adapter under `broad-v3` / `matching-decisions-v3`. Section 9.2 partial isolation harness verified (IP literal rejections, Squid ACL matrix, private redirect rejections, decompression bombs, redirect loops, and real-container positive public fetch and private target denials through Squid).
+Verified gates:
+- Gate A (isolated config & budget enforcement): Passed.
+- Gate B (offline harness & native parsers): Passed (340 backend tests).
+- Gate C (live generative schemas & structured output): Passed on `openai/gpt-6-luna` for profile analysis and job extraction.
+- Gate D (live Decisions matching adapter): Passed on `typesafe/jev-1.13-20260917` under `broad-v3` / `matching-decisions-v3`.
+- Gate E (semantic fixture evaluation): Passed across 12 authored cases (profession neutrality, prompt injection resistance, closed vacancies, domain conflicts, and incomparable criteria).
+- Gate F (integrated application journey): Passed full 7-step journey (Owner auth -> Ingestion -> CV Extraction -> Matching -> DB persistence -> Shortlist view -> All-jobs view -> Idempotency).
+- Section 9.2 Container Isolation: Positive public fetch through Squid verified; private target denials verified; direct public egress blocked; live listener directional drops verified; disposable firewall harness passed 100%.
 
-Unfinished gates remain explicitly open: Full section 9.2 directional firewall acceptance with live container listeners (Section 9.2 live gate remains open; real deployment fetching disabled via `JOBFINDER_FETCH_ISOLATION_VERIFIED=false`), broader semantic evaluation (Phase E), integrated application journey (Phase F), end-to-end monitoring journey (section 11), ntfy device delivery (section 12), and deployed recovery (section 13).
+Unfinished gates remaining for full production release:
+- Real deployment fetching enablement (currently safely disabled: `FETCH_ISOLATION_VERIFIED=false`; host-level persistence unit `jobfinder-fetch-control.service` to be installed on release).
+- Private ingress configuration & validation (section 10: LAN IP 443/8443, Tailscale Serve proxy).
+- Scheduled device digest & ntfy delivery to owner's physical device (section 12).
+- Full production data backup, timer installation, and disaster recovery drill (section 13).
+- Browser-based collection rendering containment (kept explicitly pending).
 ## Historical deployment continuation update — 2026-10-08 (preset direction superseded)
 
 The owner will move continuation to the deployment environment, use a local LLM as the development agent, supply an OpenRouter API key privately, and create `@preset/job-finder` for application LLM testing. This supersedes the earlier statement that the initial test model reference is entirely unset. Keep profile_analysis, job_extraction and job_matching independently configurable; all may initially use the same preset. The development agent's local model does not replace OpenRouter in the application. Underlying preset models are selected by the owner in OpenRouter.
