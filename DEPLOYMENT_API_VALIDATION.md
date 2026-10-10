@@ -299,12 +299,12 @@ Minimum final table:
 | --- | --- | --- |
 | A: isolated configuration and cumulative budget | Passed | Offline refusals, disposable test DB, and `--execute-live` bridge proven in launcher (`scripts/validate-live-api.py`). |
 | B: offline harness and native parsers | Passed | 340 backend tests passing offline; MockTransport covers chat and Decisions protocols, 5-anchor scoring, half-up mapping, candidate bounding, focus-domain checks, comparability, and failure modes. |
-| C: Luna and Jev live protocol/schema checks | Open | Initial synthetic transport probes passed (run `20261009_142304`: Luna chat and Jev Decisions, US$0.000020042 spend, 0 held spend); actual generative profile and extraction schemas remain pending. |
-| D: Jev evidence-backed assessment conversion | Open | Phase D adapter implemented under `broad-v3` / `matching-decisions-v3`, 5 anchors, `round_half_up`, bounded candidates, focus-domain enforcement and comparability; tested offline. Live Jev semantic assessment remains pending. |
+| C: Luna and Jev live protocol/schema checks | Passed | Verified live with `openai/gpt-6-luna` (structured output probe, generative `Facts` schema for profile analysis, generative `Extraction` schema for job extraction) and `typesafe/jev-1.13` (Decisions protocol probe); all returned valid schemas and provider-reported costs. |
+| D: Jev evidence-backed assessment conversion | Passed | Verified live with `typesafe/jev-1.13-20260917` Decisions adapter: derived valid current `Assessment` (`relation=aligned`, `plausible_connection=True`), 5-anchor scoring, bounded candidate evidence, under policy `broad-v3` / `matching-decisions-v3`. |
 | E: small semantic fixture evaluation | Pending | Evaluation dataset and target rubric pending. |
 | F: real worker/API/portal integration | Pending | Deployed end-to-end journey pending. |
 | Offline regressions and required frontend checks | Passed | 340 backend tests, 7 firewall transaction tests, 9 launcher unit tests passing offline. |
-| Spend, request count, unresolved reservations | Recorded | 2 inference attempts, US$0.000020042 known, US$0 held spend in `.data/live_run_ledger.json`. 58 attempts / US$0.999979958 remaining under advisory validation cap. |
+| Spend, request count, unresolved reservations | Recorded | 19 inference attempts, US$0.000836348 known, US$0 held spend in `.data/live_run_ledger.json`. 41 attempts / US$0.999163652 remaining under advisory validation cap. |
 | Live workers stopped and temporary key removed | Verified | Temporary bridge removed on orderly shutdown in every live launcher run; verified no leftovers. |
 The final report must state exact passes/failures, model versions actually used, request count and total known/held spend, any stopped stage and its next action, commit IDs, and remaining deployment gates. A successful response alone is not matching acceptance. A correct mocked parser alone is not live API acceptance. Reaching the spending cap is a bounded checkpoint, not permission to declare unfinished work complete.
 

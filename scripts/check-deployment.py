@@ -11,7 +11,7 @@ from pathlib import Path
 from deployment_config import configuration, runtime_security_option
 
 
-def check(config: dict) -> None:
+def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
     services = config["services"]
     security_option = runtime_security_option(config)
     expected = {
@@ -72,7 +72,12 @@ def check(config: dict) -> None:
     assert not ntfy_image.endswith("0" * 64), "Use a real ntfy image digest"
     assert services["ntfy"]["user"] == "10001:10001"
     assert set(services["db"]["networks"]) == {"core"}
-    assert services["fetcher"]["environment"]["JOBFINDER_FETCH_ISOLATION_VERIFIED"] == "false"
+    isolation_setting = services["fetcher"]["environment"]["JOBFINDER_FETCH_ISOLATION_VERIFIED"]
+    assert isolation_setting in ("true", "false"), (
+        "JOBFINDER_FETCH_ISOLATION_VERIFIED must be 'true' or 'false'"
+    )
+    if not allow_verified_isolation:
+        assert isolation_setting == "false", "Template default must keep fetch isolation disabled"
     assert {item["source"] for item in services["fetcher"]["secrets"]} == {"fetcher_token"}
     assert "openrouter_api_key" not in {item["source"] for item in services["worker"]["secrets"]}
     for name in ("core", "fetch", "fetch_control", "notification"):
@@ -151,7 +156,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         config = configuration(args.env_file)
-        check(config)
+        check(config, allow_verified_isolation=bool(args.env_file))
         if args.env_file:
             check_secrets(config)
     except (AssertionError, ValueError, RuntimeError, KeyError, OSError) as error:

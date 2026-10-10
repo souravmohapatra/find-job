@@ -32,6 +32,7 @@ def configuration(env_file: Path | None = None) -> dict[str, Any]:
             INTEGRATION_MODE="mock",
             SEARCH_MODE="mock",
             NOTIFICATION_MODE="mock",
+            FETCH_ISOLATION_VERIFIED="false",
         )
     result = subprocess.run(
         [

@@ -319,15 +319,23 @@ def run_probes() -> None:
     configs = [
         (
             "profile_analysis",
-            TaskConfig(model="openai/gpt-6-luna", input_tokens=4000, output_tokens=256),
+            TaskConfig(
+                model="openai/gpt-6-luna",
+                input_tokens=8000,
+                output_tokens=1000,
+                prompt_price=Decimal("5"),
+                completion_price=Decimal("15"),
+            ),
         ),
         (
             "job_matching",
             TaskConfig(
                 model="typesafe/jev-1.13",
                 protocol="decisions",
-                input_tokens=4000,
-                output_tokens=256,
+                input_tokens=8000,
+                output_tokens=500,
+                prompt_price=Decimal("5"),
+                completion_price=Decimal("15"),
             ),
         ),
     ]
@@ -361,9 +369,144 @@ def run_probes() -> None:
             )
 
 
+def run_schema_checks() -> None:
+    """Phase C & Phase D: actual generative profile/extraction schemas & Jev assessment.
+
+    Uses minimal synthetic fixtures and runs through the real configured adapters and ledger.
+    Stop on the first failure.
+    """
+    from app.ai.configuration import latest
+    from app.ai.contracts import TaskConfig
+    from app.ai.extraction import extract
+    from app.ai.matching import assess
+    from app.ai.models import InferenceCall, TaskRevision
+    from app.ai.profile import analyze_profile
+    from app.collection.generic import PageLink
+    from app.db import get_engine
+    from app.domain.matching import Assessment
+    from app.domain.profile import Facts, Span
+    from app.services.operations import OperationError
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from tests.synthetic_matching import FACTS, POSTINGS, PREFERENCES
+
+    # 1. Profile Analysis with minimal synthetic CV
+    print("--- Running Profile Analysis schema check (Luna) ---")
+    with Session(get_engine()) as db:
+        prof_rev = latest(db, "profile_analysis")
+        prof_config_id = str(prof_rev.id) if prof_rev else None
+
+    cv_spans = [
+        Span(
+            id="cv:1",
+            text="Experienced strategy consultant with background in operations and analysis.",
+        ),
+        Span(id="cv:2", text="Senior Consultant at Alpha Advisory from 2021 to 2024."),
+        Span(
+            id="cv:3",
+            text="Led market entry analysis, growth strategy projects, and commercial planning.",
+        ),
+        Span(id="cv:4", text="Skills: Financial Modeling, Strategic Planning, Market Research."),
+    ]
+    try:
+        facts = analyze_profile(cv_spans, prof_config_id, None)
+        assert isinstance(facts, Facts)
+        assert facts.summary is not None
+        print(
+            f"Profile analysis SUCCESS: {len(facts.employment)} roles, "
+            f"{len(facts.skills)} skills extracted."
+        )
+    except OperationError as err:
+        print(f"Profile analysis FAILED: {err.code}", file=sys.stderr)
+        raise fail(f"profile_analysis schema check failed ({err.code})") from err
+    with Session(get_engine()) as db:
+        call = db.scalar(select(InferenceCall).order_by(InferenceCall.created_at.desc()).limit(1))
+        print(
+            f"call: cost=${call.reported_usd} latency={call.latency_ms}ms "
+            f"model={call.returned_model}"
+        )
+
+    # 2. Job Extraction with minimal synthetic posting
+    print("--- Running Job Extraction schema check (Luna) ---")
+    with Session(get_engine()) as db, db.begin():
+        ext_rev = latest(db, "job_extraction")
+        if ext_rev is None:
+            ext_row = TaskRevision(
+                task="job_extraction",
+                revision=1,
+                config=TaskConfig(
+                    model="openai/gpt-6-luna",
+                    input_tokens=8000,
+                    output_tokens=1000,
+                    prompt_price=Decimal("5"),
+                    completion_price=Decimal("15"),
+                ).model_dump(mode="json"),
+                validation_state="validated",
+            )
+            db.add(ext_row)
+            db.flush()
+            ext_config_id = ext_row.id
+        else:
+            ext_config_id = ext_rev.id
+
+    job_text = (
+        "Strategy Manager\n"
+        "Alpha Advisory - London\n"
+        "We are looking for a Strategy Manager to lead our corporate growth initiatives.\n"
+        "Responsibilities include market analysis and business planning.\n"
+        "Apply at https://jobs.example.com/apply"
+    )
+    links = [PageLink(url="https://jobs.example.com/apply", label="Apply")]
+    try:
+        extraction_res = extract(
+            job_text, "https://jobs.example.com/posting/1", links, ext_config_id, None
+        )
+        assert len(extraction_res.jobs) >= 1
+        print(f"Job extraction SUCCESS: {len(extraction_res.jobs)} jobs extracted.")
+    except OperationError as err:
+        print(f"Job extraction FAILED: {err.code}", file=sys.stderr)
+        raise fail(f"job_extraction schema check failed ({err.code})") from err
+    with Session(get_engine()) as db:
+        call = db.scalar(select(InferenceCall).order_by(InferenceCall.created_at.desc()).limit(1))
+        print(
+            f"call: cost=${call.reported_usd} latency={call.latency_ms}ms "
+            f"model={call.returned_model}"
+        )
+
+    # 3. Job Matching assessment with Jev Decisions adapter
+    print("--- Running Job Matching assessment check (Jev Decisions) ---")
+    with Session(get_engine()) as db:
+        match_rev = latest(db, "job_matching")
+        match_config_id = match_rev.id if match_rev else None
+
+    try:
+        assessment = assess(FACTS, PREFERENCES, POSTINGS[0], match_config_id, None)
+        assert isinstance(assessment, Assessment)
+        print(
+            f"Job matching SUCCESS: relation={assessment.relation} "
+            f"score={assessment.relevance_score} "
+            f"connection={assessment.plausible_connection} "
+            f"reasons={len(assessment.reasons)}"
+        )
+    except OperationError as err:
+        print(f"Job matching FAILED: {err.code}", file=sys.stderr)
+        raise fail(f"job_matching assessment failed ({err.code})") from err
+    with Session(get_engine()) as db:
+        call = db.scalar(select(InferenceCall).order_by(InferenceCall.created_at.desc()).limit(1))
+        print(
+            f"call: cost=${call.reported_usd} latency={call.latency_ms}ms "
+            f"model={call.returned_model}"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute-live", action="store_true", help="enable live-mode preparation")
+    parser.add_argument(
+        "--schema-checks",
+        action="store_true",
+        help="run generative profile, extraction, and Jev schema checks (Phase C/D)",
+    )
     parser.add_argument("--run-id", default=time.strftime("%Y%m%d_%H%M%S"))
     args = parser.parse_args()
     run_id = args.run_id
@@ -483,6 +626,8 @@ def main() -> int:
             run_metadata["bridge"] = str(bridge_dir)
             run_metadata["metadata_attempts"] = metadata_state["attempts"]
             run_probes()
+            if args.schema_checks:
+                run_schema_checks()
         save_run_metadata(DATA_DIR / f"live_run_{run_id}.json", run_metadata)
         print(f"run metadata saved: .data/live_run_{run_id}.json (no secrets)")
 

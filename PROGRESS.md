@@ -2,7 +2,35 @@
 
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
-Updated: 2026-10-10. Section 9.2 fetch isolation matrix verified against real containers under project Snap compatibility setting; live launcher reconciled.
+Updated: 2026-10-10. Gates C & D verified live with OpenAI GPT-6 Luna and TypeSafe Jev; Section 9 deployment override implemented. 19 attempts, US$0.000836348 spent.
+
+## Live OpenRouter Gates C & D and Section 9 override checkpoint — 2026-10-10 (completed)
+
+Continuation following live fetch isolation matrix acceptance. Baseline `668f340`, clean worktree.
+
+1. **Gate C verified live with `openai/gpt-6-luna`:**
+   - **Structured output probe:** Verified live with `openai/gpt-6-luna`: returned valid `Probe(status="ok")`, cost=$0.00000635, latency=1027ms, generation recorded.
+   - **Generative Profile Analysis schema:** Minimal synthetic CV analyzed via `analyze_profile()` against `openai/gpt-6-luna`: returned valid `Facts` object with extracted roles, responsibilities, and skills with exact span evidence quotes; cost=$0.00018210, latency=7634ms.
+   - **Generative Job Extraction schema:** Minimal synthetic vacancy page extracted via `extract()` against `openai/gpt-6-luna`: returned valid `Extraction` object with extracted job title, description, and apply link; cost=$0.00010195, latency=9331ms.
+   - Gate C is PASSED.
+
+2. **Gate D verified live with `typesafe/jev-1.13-20260917` Decisions endpoint:**
+   - **Decisions protocol probe:** Verified live with native typed choice probe (`probe` question with "ok" / "error" criteria); returned valid `Probe(status="ok")`, cost=$0.00001369, latency=360ms, generation recorded.
+   - **Live Job Matching assessment:** Verified live with `assess()` against native Decisions endpoint using synthetic `FACTS`, `PREFERENCES`, and `POSTINGS[0]`: returned valid `Assessment` with `relation="aligned"`, `plausible_connection=True`, 5-anchor rubric, bounded evidence candidates, under policy `broad-v3` / `matching-decisions-v3`; cost=$0.00007799, latency=354ms.
+   - Gate D is PASSED.
+
+3. **Cumulative budget and accounting reconciled:**
+   - Durable run ledger (`.data/live_run_ledger.json`) records **19 attempts, US$0.000836348 known spend, US$0 held spend**.
+   - Remaining allowance under advisory US$1 / 60-request cap: **41 requests, US$0.999163652**.
+   - Temporary key bridge removed on orderly shutdown in every live launcher run; verified no leftovers.
+
+4. **Section 9 deployment override implemented:**
+   - Parameterized `compose.yaml`: `JOBFINDER_FETCH_ISOLATION_VERIFIED: '${FETCH_ISOLATION_VERIFIED:-false}'`.
+   - Default template in repository and `scripts/deployment_config.py` preserves safe `FETCH_ISOLATION_VERIFIED="false"`.
+   - `scripts/check-deployment.py` updated: template checks strictly assert `JOBFINDER_FETCH_ISOLATION_VERIFIED == "false"`; deployment checks with `--env-file` permit `"true"` or `"false"` once verified. Documented in `deploy/.env.example`.
+
+5. **Next action:**
+   - Move to Gate E (semantic cases evaluation) and Phase F (real worker/API/portal integration).
 
 ## Fetch isolation matrix and live launcher checkpoint — 2026-10-10 (completed)
 

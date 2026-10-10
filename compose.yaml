@@ -109,7 +109,7 @@ services:
       JOBFINDER_FETCH_PROXY_URL: http://egress-proxy:3128
       JOBFINDER_FETCH_TOKEN_FILE: /run/secrets/fetcher_token
       JOBFINDER_FETCH_STATE_FILE: /data/fetcher/origins.sqlite3
-      JOBFINDER_FETCH_ISOLATION_VERIFIED: 'false'
+      JOBFINDER_FETCH_ISOLATION_VERIFIED: '${FETCH_ISOLATION_VERIFIED:-false}'
     secrets: [fetcher_token]
     volumes: [fetch_state:/data/fetcher]
     networks: [fetch_control, fetch]
