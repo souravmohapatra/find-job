@@ -2,9 +2,35 @@
 
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
-Updated: 2026-10-10. R1 has a verified project-local Snap compatibility solution without migration; application NNP remains enabled. Full fetch-isolation/DNS, matching and deployment acceptance remain open.
+Updated: 2026-10-10. Section 9.2 fetch isolation matrix verified against real containers under project Snap compatibility setting; live launcher reconciled.
 
-## R1 implementation checkpoint — 2026-10-10 (completed)
+## Fetch isolation matrix and live launcher checkpoint — 2026-10-10 (completed)
+
+Continuation following owner's R1 resolution commit `372deb5` and `e5871d4`. Baseline `e5871d4`, clean worktree.
+
+1. **Section 9.2 Fetch Isolation Matrix verified against real container boundaries (`scripts/test-fetch-isolation.py`):**
+   - **IP literal rejection:** All private IPv4 (`127.0.0.1`, `10.0.0.1`, `172.16.0.1`, `192.168.1.1`, `0.0.0.0`), link-local metadata (`169.254.169.254`), IPv6 (`::1`, `fc00::1`, `fe80::1`, `2001:db8::1`), and non-80/443 ports (`22`, `8080`) strictly rejected before connection.
+   - **Squid ACL matrix:** All 20 destination/method/port ACL test cases passed under disposable network-none container (`python3 scripts/check-proxy.py`).
+   - **Private redirect rejection:** HTTP 301/302 responses attempting to redirect to private destinations (`127.0.0.1/admin`, `10.0.0.1/internal`, `192.168.1.1/router`, `169.254.169.254/latest/meta-data`, `[::1]/secret`) strictly rejected before connection.
+   - **Oversized payload and decompression bomb handling:** Streaming decompressor in `body_bytes()` caps uncompressed chunks against limit, strictly raising `FetchFailure("document_too_large")` without unbounded memory consumption on both raw oversized content (2,000 bytes against 1,000 limit) and gzip decompression bombs (1 MB compressed against 50 KB limit).
+   - **Redirect loop rejection:** Redirect chains exceeding hop limit strictly raise `FetchFailure("redirect_limit")`.
+   - **Disposable container boundary with `jobfinder-backend:local` under `setpriv --no-new-privs` (`DOCKER_NO_NEW_PRIVILEGES=false`):**
+     - Mounted disposable token file from project-local `.data` directory (0755 dir, 0644 file) to avoid Snap Docker `/tmp` mount-namespace isolation.
+     - Healthcheck `/health/live` verified healthy (status 200).
+     - Worker RPC authentication: missing token rejected with 401; wrong token rejected with 401.
+     - Disabled gate: valid token returns 502 with `{"code": "isolation_not_verified"}`.
+     - Request body size limit (> 8192 bytes) strictly rejected with HTTP 413 `fetch_request_too_large`.
+     - Enabled gate (`JOBFINDER_FETCH_ISOLATION_VERIFIED=true`): private targets (`127.0.0.1`, `10.0.0.1`, `169.254.169.254`) strictly rejected at API schema boundary (HTTP 422 `invalid_fetch_request`) or engine boundary (HTTP 502 `destination_denied`).
+     - Direct public egress without proxy: container on `--internal` network attempts to connect directly to external IP (`1.1.1.1:80`); strictly blocked with `Network is unreachable` (Errno 101) due to absence of default gateway/NAT routes on internal Docker bridge.
+   - All tests pass (exit 0, 27.32s).
+
+2. **Live launcher reconciliation (`scripts/validate-live-api.py`):**
+   - Added automatic backend virtual environment Python selection (`sys.prefix` check).
+   - Quantized `capped_usd` using `ROUND_DOWN` to 6 decimal places to satisfy `AiLimits.daily_usd` schema validation when spending has high precision (e.g. $0.000020042).
+   - Gate A offline refusals, isolated DB creation, and schema initialization verified clean.
+
+3. **Next action:**
+   - Continue execution of Section 8 (Gates C, D, E under `DEPLOYMENT_API_VALIDATION.md`) and deployment preparation under `FINISH_DEVELOPMENT_AND_VALIDATE.md`.
 
 Owner assigned analysis and implementation to remove R1; Docker migration is explicitly excluded. Baseline `55f0f25`, clean worktree. Read scope/planning/implementation and traced Compose, proxy/ntfy checks, preflight and backup/restore runtime callers. No `.agent` was created without agreement.
 

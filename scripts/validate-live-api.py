@@ -23,7 +23,7 @@ import re
 import subprocess
 import sys
 import time
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 from urllib.parse import quote
 
@@ -121,7 +121,6 @@ def provision_database(run_id: str) -> None:
 def initialize_schema_and_owner(limits_calls: int, limits_usd: Decimal) -> None:
     from alembic import command
     from alembic.config import Config
-
     from app.ai.contracts import AiLimits
     from app.ai.models import AiLimitsRow
     from app.cli import create_owner
@@ -234,7 +233,6 @@ def check_spending_backstop(metadata_state: dict[str, int]) -> None:
     import math
 
     import httpx
-
     from app.config import get_settings
 
     def finite(value: object) -> bool:
@@ -298,9 +296,6 @@ def run_probes() -> None:
     diagnose offline before another attempt; never send a second probe after a
     failure in the same run.
     """
-    from sqlalchemy import func, select
-    from sqlalchemy.orm import Session
-
     from app.ai.configuration import latest
     from app.ai.contracts import TaskConfig
     from app.ai.models import InferenceCall, TaskRevision
@@ -308,6 +303,8 @@ def run_probes() -> None:
     from app.db import get_engine
     from app.profile_models import Operation
     from app.services.operations import OperationError
+    from sqlalchemy import func, select
+    from sqlalchemy.orm import Session
 
     with Session(get_engine()) as db:
         pending = (
@@ -441,7 +438,10 @@ def main() -> int:
             f"@127.0.0.1:55439/jobfinder_test_live_api_{run_id}"
         )
         # App daily limits never exceed the remaining cumulative allowance (Phase A step 9).
-        initialize_schema_and_owner(min(remaining_requests, 60), min(remaining_usd, Decimal("1")))
+        capped_usd = min(remaining_usd, Decimal("1")).quantize(
+            Decimal("0.000001"), rounding=ROUND_DOWN
+        )
+        initialize_schema_and_owner(min(remaining_requests, 60), capped_usd)
 
         settings = get_settings()
         observed = {
@@ -505,4 +505,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    venv_dir = ROOT / "backend/.venv"
+    venv_python = venv_dir / "bin/python"
+    if venv_python.exists() and Path(sys.prefix).resolve() != venv_dir.resolve():
+        os.execv(str(venv_python), [str(venv_python), *sys.argv])
     raise SystemExit(main())
