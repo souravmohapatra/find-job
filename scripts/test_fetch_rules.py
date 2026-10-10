@@ -79,7 +79,7 @@ if [ "$1" = "network" ] && [ "$2" = "inspect" ]; then
   exit 0
 fi
 if [ "$1" = "compose" ]; then
-  service=$6
+  service="${!#}"
   case "$service" in
     fetcher) echo "c-fetcher" ;;
     egress-proxy) echo "c-proxy" ;;

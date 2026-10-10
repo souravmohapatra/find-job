@@ -1,5 +1,50 @@
 # Validation
 
+## Controlled target, parameter resolution and firewall harness verification — 2026-10-10
+
+Baseline `ad42c96`. Worktree clean before changes.
+
+### Actual checks run and outcomes:
+
+1. **Parameter Resolution & Unit Test Hardening (`deploy/fetch-control-rules.sh`, `scripts/test_fetch_rules.py`):**
+   - Updated `deploy/fetch-control-rules.sh` to explicitly source `deploy/.env` when present and pass `--env-file "$ENV_FILE"` to `docker compose`.
+   - Updated `scripts/test_fetch_rules.py` mock parser (`service="${!#}"`) to handle `--env-file` argument shifting: all 7 tests pass (1.902s, exit 0).
+
+2. **Controlled Target Prepared & Started:**
+   - Initialized `deploy/.env` with `DOCKER_NO_NEW_PRIVILEGES=false` and `FETCH_ISOLATION_VERIFIED=false`.
+   - Started target: `docker compose --env-file deploy/.env up -d egress-proxy fetcher`.
+   - Verified networks created and running: `jobfinder_fetch_control` (`internal: true`), `jobfinder_fetch` (`internal: true`), `jobfinder_public_outbound`.
+   - Verified containers running and healthy: `jobfinder-egress-proxy-1` (Up, healthy) and `jobfinder-fetcher-1` (Up, healthy).
+   - Address and bridge resolution verified via `deploy/fetch-control-rules.sh`:
+     - `fc_bridge`: `br-a5aeabdb0102`
+     - `fetch_bridge`: `br-3273d0fe0b8d`
+     - `fetcher_fc`: `172.31.0.2`
+     - `fetcher_fetch`: `192.168.0.3`
+     - `proxy_fetch`: `192.168.0.2`
+
+3. **Disposable Firewall Harness (`scripts/test-fetch-control-harness.sh`):**
+   - Executed `scripts/test-fetch-control-harness.sh` on disposable networks with `DOCKER_NO_NEW_PRIVILEGES=false`:
+   - All 7 baseline reachability probes verified before rules applied.
+   - Positives verified: worker->fetcher RPC allowed, fetcher->proxy port allowed, internal service-name DNS allowed.
+   - Negatives verified: fetcher->worker same-bridge initiation blocked, proxy->fetcher blocked, fetcher->host gateway listener (INPUT coverage) blocked.
+   - Output: `HARNESS PASSED: all boundaries behaved as designed on disposable networks.` (exit 0, 13.73s).
+
+4. **Host Firewall Rules Installed and Verified on Controlled Target:**
+   - Installed host rules: `deploy/fetch-control-rules.sh install`.
+   - Verified active rules: `deploy/fetch-control-rules.sh verify` reported `verified: rules present and bound to current addresses`.
+   - Confirmed 8 `DOCKER-USER` rules and 2 `INPUT` rules bound to current bridge IDs and container IPs.
+   - Verified clean transactional rollback to 0/0 rules and clean idempotent reinstall.
+   - Created verified acceptance record: `.data/fetch_isolation_acceptance.json`.
+
+5. **Hardened Preflight & Runtime Security Verification:**
+   - `python3 scripts/test_runtime_security.py`: 4 passed (0.385s, exit 0).
+   - `python3 scripts/check-deployment.py --env-file deploy/.env`: passed (0.16s, exit 0).
+
+## Firewall installation readiness review — 2026-10-10, baseline `ad42c96`
+`python3 scripts/test_fetch_rules.py`: 7 passed, 2.125s, exit 0; `bash -n deploy/fetch-control-rules.sh scripts/test-fetch-control-harness.sh`: passed. Read-only `docker network inspect jobfinder_fetch_control jobfinder_fetch` reported both networks not found; running-container lookup with the Job Finder Compose-project label returned none. Deployment parameter file `deploy/.env` is absent. The installer cannot currently target the expected stack; review also found service lookups omit an explicit deployment env-file and verify needs root for iptables access.
+
+No rules installed or modified, no containers started, no credentials or inference read/sent, no implementation fix or commit made. The required current disposable firewall-harness success and complete directional/private boundary acceptance were not reproduced here. Readiness conclusion and exact next actions are in PROGRESS.md.
+
 ## Live schema compatibility, positive fetch path and hardened preflight checks — 2026-10-10
 
 Baseline `d93a67b`. Reconciled following the agent review in REVIEW.md.

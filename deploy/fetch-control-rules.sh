@@ -27,12 +27,19 @@
 
 set -u
 cd "$(dirname "$0")/.." # repo root: docker compose reads compose.yaml from here
+ENV_FILE="${ENV_FILE:-deploy/.env}"
+if [ -f "$ENV_FILE" ]; then
+	set -a
+	# shellcheck source=/dev/null
+	source "$ENV_FILE"
+	set +a
+fi
+
 # The harness overrides MARK so its disposable rules can never collide with (or be
 # removed by) the real stack's rollback.
 MARK="${MARK:-jobfinder-fetch-control}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-jobfinder}"
 FETCHER_ALLOWED_PORT="${FETCHER_ALLOWED_PORT:-3128}"
-
 die() { echo "BLOCKED: $*" >&2; exit 2; }
 need() { command -v "$1" >/dev/null || die "missing tool: $1"; }
 
@@ -45,7 +52,11 @@ network_bridge() { # compose network name -> host bridge interface
 
 address_on() { # compose service, compose network -> IPv4 on that network
 	local container
-	container=$(docker compose -p "$COMPOSE_PROJECT" ps -q "$1" 2>/dev/null) ||
+	local compose_cmd=(docker compose -p "$COMPOSE_PROJECT")
+	if [ -f "$ENV_FILE" ]; then
+		compose_cmd+=(--env-file "$ENV_FILE")
+	fi
+	container=$("${compose_cmd[@]}" ps -q "$1" 2>/dev/null) ||
 		die "cannot query service $1"
 	[ -n "$container" ] || die "service $1 is not running"
 	docker inspect "$container" --format \

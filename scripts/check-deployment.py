@@ -14,6 +14,50 @@ from deployment_config import configuration, runtime_security_option
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def verify_firewall_rules() -> tuple[int, str]:
+    """Verify active fetch-control firewall rules using root or a helper container."""
+    if os.geteuid() == 0:
+        res = subprocess.run(
+            ["bash", str(ROOT / "deploy/fetch-control-rules.sh"), "verify"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return res.returncode, (res.stderr.strip() or res.stdout.strip())
+    res = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "--cap-add",
+            "NET_ADMIN",
+            "--net",
+            "host",
+            "--security-opt",
+            "no-new-privileges:false",
+            "-v",
+            "/var/run/docker.sock:/var/run/docker.sock",
+            "-v",
+            f"{ROOT}:/repo",
+            "-w",
+            "/repo",
+            "alpine:latest",
+            "sh",
+            "-c",
+            (
+                "apk add -q iptables docker-cli docker-cli-compose bash && "
+                "bash deploy/fetch-control-rules.sh verify"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return res.returncode, (res.stderr.strip() or res.stdout.strip())
+
+
 def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
     services = config["services"]
     security_option = runtime_security_option(config)
@@ -88,16 +132,10 @@ def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
             assert record.get("status") == "accepted", "Acceptance record status must be 'accepted'"
         except Exception as error:
             raise AssertionError(f"Invalid fetch isolation acceptance record: {error}") from error
-        result = subprocess.run(
-            ["bash", str(ROOT / "deploy/fetch-control-rules.sh"), "verify"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
+        rc, output = verify_firewall_rules()
+        if rc != 0:
             raise AssertionError(
-                f"Active fetch-control firewall rules verification failed:\n"
-                f"{result.stderr.strip() or result.stdout.strip()}"
+                f"Active fetch-control firewall rules verification failed:\n{output}"
             )
     else:
         assert isolation_setting == "false", (
