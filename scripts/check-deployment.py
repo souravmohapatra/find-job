@@ -6,9 +6,12 @@ import json
 import os
 import re
 import stat
+import subprocess
 from pathlib import Path
 
 from deployment_config import configuration, runtime_security_option
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
@@ -73,11 +76,33 @@ def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
     assert services["ntfy"]["user"] == "10001:10001"
     assert set(services["db"]["networks"]) == {"core"}
     isolation_setting = services["fetcher"]["environment"]["JOBFINDER_FETCH_ISOLATION_VERIFIED"]
-    assert isolation_setting in ("true", "false"), (
-        "JOBFINDER_FETCH_ISOLATION_VERIFIED must be 'true' or 'false'"
-    )
-    if not allow_verified_isolation:
-        assert isolation_setting == "false", "Template default must keep fetch isolation disabled"
+    if isolation_setting == "true":
+        acceptance_file = ROOT / ".data/fetch_isolation_acceptance.json"
+        if not acceptance_file.exists():
+            raise AssertionError(
+                "JOBFINDER_FETCH_ISOLATION_VERIFIED cannot be 'true' without verified "
+                "acceptance evidence (.data/fetch_isolation_acceptance.json)."
+            )
+        try:
+            record = json.loads(acceptance_file.read_text())
+            assert record.get("status") == "accepted", "Acceptance record status must be 'accepted'"
+        except Exception as error:
+            raise AssertionError(f"Invalid fetch isolation acceptance record: {error}") from error
+        result = subprocess.run(
+            ["bash", str(ROOT / "deploy/fetch-control-rules.sh"), "verify"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise AssertionError(
+                f"Active fetch-control firewall rules verification failed:\n"
+                f"{result.stderr.strip() or result.stdout.strip()}"
+            )
+    else:
+        assert isolation_setting == "false", (
+            "JOBFINDER_FETCH_ISOLATION_VERIFIED must be 'false' unless verified"
+        )
     assert {item["source"] for item in services["fetcher"]["secrets"]} == {"fetcher_token"}
     assert "openrouter_api_key" not in {item["source"] for item in services["worker"]["secrets"]}
     for name in ("core", "fetch", "fetch_control", "notification"):

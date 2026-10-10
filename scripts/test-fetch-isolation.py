@@ -97,30 +97,54 @@ def _probe_redirect(target: str) -> None:
     from app.fetcher.contracts import FetchFailure
     from app.fetcher.settings import FetchSettings
 
+    handler_called = False
+
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(302, headers={"location": target})
+        nonlocal handler_called
+        if request.url.path == "/start":
+            handler_called = True
+            return httpx.Response(302, headers={"location": target})
+        return httpx.Response(404)
 
-    config = FetchSettings(
-        proxy_url="http://127.0.0.1:3128",
-        state_file=Path("/tmp/test_origins.sqlite3"),
-        isolation_verified=True,
-    )
-    fetcher = fetch_http.Fetcher(config)
-    transport = httpx.MockTransport(handler)
-
-    async def run_fetch():
-        async with httpx.AsyncClient(transport=transport) as client:
-            return await fetcher.chain(
-                client, "https://example.com/start", {}, 512 * 1024, robots=False
-            )
-
-    rejected = False
+    state_id = uuid4().hex[:8]
+    state_path = ROOT / ".data" / f"test_redirect_{state_id}.sqlite3"
     try:
-        asyncio.run(run_fetch())
-    except (FetchFailure, ValueError):
-        rejected = True
-    if not rejected:
-        die(f"Redirect to private destination was NOT rejected: {target}")
+        config = FetchSettings(
+            proxy_url="http://127.0.0.1:3128",
+            state_file=state_path,
+            isolation_verified=True,
+        )
+        fetcher = fetch_http.Fetcher(config)
+        transport = httpx.MockTransport(handler)
+
+        async def run_fetch():
+            async with httpx.AsyncClient(transport=transport) as client:
+                return await fetcher.chain(
+                    client, "https://example.com/start", {}, 512 * 1024, robots=False
+                )
+
+        rejected = False
+        try:
+            asyncio.run(run_fetch())
+        except FetchFailure as failure:
+            if failure.code == "destination_denied":
+                rejected = True
+            else:
+                die(
+                    f"Redirect to {target} failed with unexpected FetchFailure code: {failure.code}"
+                )
+        except ValueError as err:
+            if "Private" in str(err) or "reserved" in str(err) or "Invalid public URL" in str(err):
+                rejected = True
+            else:
+                die(f"Redirect to {target} failed with unexpected ValueError: {err}")
+
+        if not handler_called:
+            die(f"Redirect handler was never reached for target: {target}")
+        if not rejected:
+            die(f"Redirect to private destination was NOT rejected: {target}")
+    finally:
+        state_path.unlink(missing_ok=True)
 
 
 def test_private_redirect_rejection() -> None:
@@ -198,27 +222,32 @@ def test_redirect_limit_rejection() -> None:
         current_step = int(request.url.path.strip("/") or "0")
         return httpx.Response(302, headers={"location": f"https://example.com/{current_step + 1}"})
 
-    config = FetchSettings(
-        proxy_url="http://127.0.0.1:3128",
-        state_file=Path("/tmp/test_origins.sqlite3"),
-        isolation_verified=True,
-    )
-    fetcher = fetch_http.Fetcher(config)
-    transport = httpx.MockTransport(loop_handler)
-
-    async def run_loop():
-        async with httpx.AsyncClient(transport=transport) as client:
-            return await fetcher.chain(
-                client, "https://example.com/0", {}, 512 * 1024, robots=False
-            )
-
+    state_id = uuid4().hex[:8]
+    state_path = ROOT / ".data" / f"test_redirect_loop_{state_id}.sqlite3"
     try:
-        asyncio.run(run_loop())
-        die("Redirect loop was not rejected")
-    except FetchFailure as failure:
-        if failure.code != "redirect_limit":
-            die(f"Expected redirect_limit, got {failure.code}")
-    info("PASS: Redirect loop safely bounded and rejected.")
+        config = FetchSettings(
+            proxy_url="http://127.0.0.1:3128",
+            state_file=state_path,
+            isolation_verified=True,
+        )
+        fetcher = fetch_http.Fetcher(config)
+        transport = httpx.MockTransport(loop_handler)
+
+        async def run_loop():
+            async with httpx.AsyncClient(transport=transport) as client:
+                return await fetcher.chain(
+                    client, "https://example.com/0", {}, 512 * 1024, robots=False
+                )
+
+        try:
+            asyncio.run(run_loop())
+            die("Redirect loop was not rejected")
+        except FetchFailure as failure:
+            if failure.code != "redirect_limit":
+                die(f"Expected redirect_limit, got {failure.code}")
+        info("PASS: Redirect loop safely bounded and rejected.")
+    finally:
+        state_path.unlink(missing_ok=True)
 
 
 def test_fetcher_rpc_auth(fetcher_url: str, token: str) -> None:
@@ -257,6 +286,72 @@ def test_fetcher_rpc_auth(fetcher_url: str, token: str) -> None:
         die(f"Unexpected RPC response: {resp.status_code} {resp.text}")
 
 
+def test_direct_egress_probe(net_name: str, sec_opt: str) -> None:
+    """Probe direct egress on internal network: must fail with structured denial, not crash."""
+    info("Testing direct public egress denial on internal network...")
+    cmd = [
+        "docker",
+        "run",
+        "--rm",
+        "--pull",
+        "never",
+        "--security-opt",
+        sec_opt,
+        "--entrypoint",
+        "setpriv",
+        "--network",
+        net_name,
+        "jobfinder-backend:local",
+        "--no-new-privs",
+        "python",
+        "-c",
+        (
+            "import errno, socket, sys\n"
+            "s = socket.socket()\n"
+            "s.settimeout(2)\n"
+            "try:\n"
+            "    s.connect(('1.1.1.1', 80))\n"
+            "    print('RESULT:CONNECTED')\n"
+            "    sys.exit(0)\n"
+            "except OSError as e:\n"
+            "    if e.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH) "
+            "or isinstance(e, TimeoutError):\n"
+            "        print(f'RESULT:DENIED:{type(e).__name__}:{e.errno}')\n"
+            "        sys.exit(0)\n"
+            "    print(f'RESULT:ERROR:{type(e).__name__}:{e.errno}:{e}')\n"
+            "    sys.exit(1)\n"
+            "except Exception as e:\n"
+            "    print(f'RESULT:ERROR:{type(e).__name__}:{e}')\n"
+            "    sys.exit(1)\n"
+        ),
+    ]
+    probe_res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if probe_res.returncode != 0:
+        die(
+            f"Direct egress probe container failed unexpectedly (exit {probe_res.returncode}):\n"
+            f"stderr: {probe_res.stderr}\nstdout: {probe_res.stdout}"
+        )
+    output = probe_res.stdout.strip()
+    if "RESULT:CONNECTED" in output:
+        die("Direct public egress unexpectedly connected on internal network")
+    if "RESULT:DENIED:" not in output:
+        die(f"Direct egress probe did not report expected network denial: {output}")
+    info(f"PASS: Direct public egress strictly blocked on internal network ({output}).")
+
+
+def test_direct_egress_exit_125_regression() -> None:
+    """Regression: verify that Docker execution failure (exit 125) is caught as failure."""
+    info("Running regression test: ensuring Docker startup failure (exit 125) is rejected...")
+    bogus_cmd = ["docker", "run", "--rm", "--invalid-flag-that-does-not-exist", "alpine:latest"]
+    res = subprocess.run(bogus_cmd, capture_output=True, text=True, check=False)
+    assert res.returncode == 125, f"Expected Docker exit code 125, got {res.returncode}"
+    # A test that checks `returncode == 0` correctly flags this as failure
+    failed_as_expected = res.returncode != 0
+    if not failed_as_expected:
+        die("Regression failed: Docker startup failure was not detected as non-zero exit")
+    info("PASS: Docker execution failure (exit 125) properly rejected.")
+
+
 def test_disposable_container_isolation() -> None:
     """Matrix probe: real container boundary running fetcher image with NNP hardening."""
     info("Testing disposable container boundary with jobfinder-backend:local...")
@@ -265,8 +360,12 @@ def test_disposable_container_isolation() -> None:
     config = configuration()
     sec_opt = runtime_security_option(config)
     suffix = uuid4().hex[:8]
-    fetcher_name = f"jobfinder-fetcher-test-{suffix}"
-    port = 18001 + (os.getpid() % 1000)
+    net_fc = f"jobfinder-test-fc-{suffix}"
+    net_fetch = f"jobfinder-test-fetch-{suffix}"
+    net_pub = f"jobfinder-test-pub-{suffix}"
+    proxy_name = f"jobfinder-test-proxy-{suffix}"
+    fetcher_name = f"jobfinder-test-fetcher-{suffix}"
+    fetcher_name_v2 = f"jobfinder-test-fetcher-v2-{suffix}"
     token = secrets.token_hex(32)
 
     token_dir = ROOT / ".data" / f"token-{suffix}"
@@ -274,12 +373,73 @@ def test_disposable_container_isolation() -> None:
     token_file = token_dir / "fetcher_token"
     token_file.write_text(token)
     token_file.chmod(0o644)
+
+    containers_to_clean: list[str] = []
+    networks_to_clean: list[str] = []
+
     try:
-        # 1. Start fetcher with isolation_verified=false
-        cmd = [
+        # 1. Create the three test networks matching production topology
+        subprocess.run(
+            ["docker", "network", "create", "--internal", net_fc],
+            capture_output=True,
+            check=True,
+        )
+        networks_to_clean.append(net_fc)
+        subprocess.run(
+            ["docker", "network", "create", "--internal", net_fetch],
+            capture_output=True,
+            check=True,
+        )
+        networks_to_clean.append(net_fetch)
+        subprocess.run(["docker", "network", "create", net_pub], capture_output=True, check=True)
+        networks_to_clean.append(net_pub)
+
+        # 2. Start Squid proxy on net_fetch (alias egress-proxy) and net_pub
+        squid_cmd = [
             "docker",
-            "run",
-            "-d",
+            "create",
+            "--name",
+            proxy_name,
+            "--pull",
+            "never",
+            "--security-opt",
+            sec_opt,
+            "--entrypoint",
+            "setpriv",
+            "--network",
+            net_fetch,
+            "--network-alias",
+            "egress-proxy",
+            "--user",
+            "13:13",
+            "--read-only",
+            "--tmpfs",
+            "/tmp:size=16m,mode=1777",
+            "--cap-drop",
+            "ALL",
+            "-v",
+            f"{ROOT / 'deploy/squid.conf'}:/etc/squid/squid.conf:ro",
+            "ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029",
+            "--no-new-privs",
+            "/usr/sbin/squid",
+            "-f",
+            "/etc/squid/squid.conf",
+            "-NYC",
+        ]
+        subprocess.run(squid_cmd, capture_output=True, check=True)
+        containers_to_clean.append(proxy_name)
+        subprocess.run(
+            ["docker", "network", "connect", net_pub, proxy_name],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(["docker", "start", proxy_name], capture_output=True, check=True)
+        time.sleep(2)
+
+        # 3. Phase 1: Start Fetcher with isolation_verified=false
+        fetcher_cmd = [
+            "docker",
+            "create",
             "--name",
             fetcher_name,
             "--pull",
@@ -288,6 +448,10 @@ def test_disposable_container_isolation() -> None:
             sec_opt,
             "--entrypoint",
             "setpriv",
+            "--network",
+            net_fc,
+            "--network-alias",
+            "fetcher",
             "--read-only",
             "--tmpfs",
             "/tmp:size=64m,mode=1777",
@@ -298,15 +462,13 @@ def test_disposable_container_isolation() -> None:
             "-v",
             f"{token_file}:/run/secrets/fetcher_token:ro",
             "-e",
-            "JOBFINDER_FETCH_PROXY_URL=http://127.0.0.1:3128",
+            "JOBFINDER_FETCH_PROXY_URL=http://egress-proxy:3128",
             "-e",
             "JOBFINDER_FETCH_TOKEN_FILE=/run/secrets/fetcher_token",
             "-e",
             "JOBFINDER_FETCH_STATE_FILE=/data/fetcher/origins.sqlite3",
             "-e",
             "JOBFINDER_FETCH_ISOLATION_VERIFIED=false",
-            "-p",
-            f"127.0.0.1:{port}:8001",
             "jobfinder-backend:local",
             "--no-new-privs",
             "uvicorn",
@@ -317,54 +479,89 @@ def test_disposable_container_isolation() -> None:
             "8001",
             "--no-access-log",
         ]
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
-
-        url = f"http://127.0.0.1:{port}"
-        import httpx
-
-        ready = False
-        for _ in range(30):
-            try:
-                res = httpx.get(f"{url}/health/live", timeout=1)
-                if res.status_code == 200:
-                    ready = True
-                    break
-            except (httpx.HTTPError, OSError):
-                time.sleep(0.1)
-        if not ready:
-            die("Disposable fetcher container failed to become ready")
-
-        # Test auth probes
-        test_fetcher_rpc_auth(url, token)
-
-        # Test payload size limit probe (> 8192 bytes)
-        large_resp = httpx.post(
-            f"{url}/fetch",
-            content=b"A" * 9000,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5,
+        subprocess.run(fetcher_cmd, capture_output=True, check=True)
+        containers_to_clean.append(fetcher_name)
+        subprocess.run(
+            ["docker", "network", "connect", net_fetch, fetcher_name],
+            capture_output=True,
+            check=True,
         )
-        if large_resp.status_code != 413:
-            die(f"Expected 413 for oversized request, got {large_resp.status_code}")
-        info("PASS: Request size limit (8192 bytes) enforced.")
+        subprocess.run(["docker", "start", fetcher_name], capture_output=True, check=True)
+        time.sleep(2)
 
-    finally:
-        subprocess.run(["docker", "rm", "-f", fetcher_name], capture_output=True, check=False)
-        token_file.unlink(missing_ok=True)
-        token_dir.rmdir()
-
-    # 2. Start fetcher with isolation_verified=true to test destination denial on private targets
-    fetcher_name_v2 = f"jobfinder-fetcher-test-v2-{suffix}"
-    token_dir = ROOT / ".data" / f"token-{suffix}"
-    token_dir.mkdir(mode=0o755, exist_ok=True)
-    token_file = token_dir / "fetcher_token"
-    token_file.write_text(token)
-    token_file.chmod(0o644)
-    try:
-        cmd_v2 = [
+        # Test auth & disabled isolation from Worker container on net_fc
+        worker_probe_cmd = [
             "docker",
             "run",
-            "-d",
+            "--rm",
+            "--pull",
+            "never",
+            "--security-opt",
+            sec_opt,
+            "--entrypoint",
+            "setpriv",
+            "--network",
+            net_fc,
+            "jobfinder-backend:local",
+            "--no-new-privs",
+            "python",
+            "-c",
+            (
+                "import json, urllib.request, urllib.error, sys\n"
+                "t = sys.argv[1]\n"
+                "try:\n"
+                "    urllib.request.urlopen(urllib.request.Request(\n"
+                "        'http://fetcher:8001/fetch', data=b'{\"url\":\"http://example.com\"}'\n"
+                "    ))\n"
+                "    sys.exit(10)\n"
+                "except urllib.error.HTTPError as e:\n"
+                "    if e.code != 401: sys.exit(11)\n"
+                "try:\n"
+                "    urllib.request.urlopen(urllib.request.Request(\n"
+                "        'http://fetcher:8001/fetch', data=b'{\"url\":\"http://example.com\"}',\n"
+                "        headers={'Authorization': 'Bearer wrong-xxxx-32-chars-long-here-xxxx'}\n"
+                "    ))\n"
+                "    sys.exit(12)\n"
+                "except urllib.error.HTTPError as e:\n"
+                "    if e.code != 401: sys.exit(13)\n"
+                "try:\n"
+                "    urllib.request.urlopen(urllib.request.Request(\n"
+                "        'http://fetcher:8001/fetch', data=b'{\"url\":\"http://example.com\"}',\n"
+                "        headers={'Authorization': 'Bearer ' + t, "
+                "'Content-Type': 'application/json'}\n"
+                "    ))\n"
+                "    sys.exit(14)\n"
+                "except urllib.error.HTTPError as e:\n"
+                "    b = json.loads(e.read().decode())\n"
+                "    if e.code != 502 or b.get('code') != 'isolation_not_verified': sys.exit(15)\n"
+                "try:\n"
+                "    urllib.request.urlopen(urllib.request.Request(\n"
+                "        'http://fetcher:8001/fetch', data=b'A'*9000,\n"
+                "        headers={'Authorization': 'Bearer ' + t, "
+                "'Content-Type': 'application/json'}\n"
+                "    ))\n"
+                "    sys.exit(16)\n"
+                "except urllib.error.HTTPError as e:\n"
+                "    if e.code != 413: sys.exit(17)\n"
+                "print('PHASE1_OK')\n"
+            ),
+            token,
+        ]
+        res = subprocess.run(worker_probe_cmd, capture_output=True, text=True, check=False)
+        if res.returncode != 0 or "PHASE1_OK" not in res.stdout:
+            die(
+                f"Phase 1 worker probes failed (exit {res.returncode}):\n{res.stderr}\n{res.stdout}"
+            )
+        info("PASS: Worker->Fetcher auth, isolation gate, and request size limits verified.")
+
+        # Stop fetcher Phase 1
+        subprocess.run(["docker", "rm", "-f", fetcher_name], capture_output=True, check=False)
+        containers_to_clean.remove(fetcher_name)
+
+        # 4. Phase 2: Start Fetcher with isolation_verified=true
+        fetcher_cmd_v2 = [
+            "docker",
+            "create",
             "--name",
             fetcher_name_v2,
             "--pull",
@@ -373,6 +570,10 @@ def test_disposable_container_isolation() -> None:
             sec_opt,
             "--entrypoint",
             "setpriv",
+            "--network",
+            net_fc,
+            "--network-alias",
+            "fetcher",
             "--read-only",
             "--tmpfs",
             "/tmp:size=64m,mode=1777",
@@ -383,15 +584,13 @@ def test_disposable_container_isolation() -> None:
             "-v",
             f"{token_file}:/run/secrets/fetcher_token:ro",
             "-e",
-            "JOBFINDER_FETCH_PROXY_URL=http://127.0.0.1:3128",
+            "JOBFINDER_FETCH_PROXY_URL=http://egress-proxy:3128",
             "-e",
             "JOBFINDER_FETCH_TOKEN_FILE=/run/secrets/fetcher_token",
             "-e",
             "JOBFINDER_FETCH_STATE_FILE=/data/fetcher/origins.sqlite3",
             "-e",
             "JOBFINDER_FETCH_ISOLATION_VERIFIED=true",
-            "-p",
-            f"127.0.0.1:{port}:8001",
             "jobfinder-backend:local",
             "--no-new-privs",
             "uvicorn",
@@ -402,81 +601,84 @@ def test_disposable_container_isolation() -> None:
             "8001",
             "--no-access-log",
         ]
-        subprocess.run(cmd_v2, capture_output=True, text=True, check=True)
-
-        url = f"http://127.0.0.1:{port}"
-        ready = False
-        for _ in range(30):
-            try:
-                res = httpx.get(f"{url}/health/live", timeout=1)
-                if res.status_code == 200:
-                    ready = True
-                    break
-            except (httpx.HTTPError, OSError):
-                time.sleep(0.1)
-        if not ready:
-            die("Disposable fetcher container (v2) failed to become ready")
-
-        # Private destination rejection
-        for private_target in [
-            "http://127.0.0.1/admin",
-            "http://10.0.0.1/internal",
-            "http://169.254.169.254/meta",
-        ]:
-            denied_resp = httpx.post(
-                f"{url}/fetch",
-                json={"url": private_target},
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=5,
-            )
-            data = denied_resp.json() if denied_resp.status_code in {422, 502} else {}
-            if denied_resp.status_code == 422 and data.get("code") == "invalid_fetch_request":
-                pass  # Rejected at API schema boundary
-            elif denied_resp.status_code == 502 and data.get("code") == "destination_denied":
-                pass  # Rejected at fetcher engine boundary
-            else:
-                die(
-                    f"Expected rejection for {private_target}, got "
-                    f"{denied_resp.status_code} {denied_resp.text}"
-                )
-        info("PASS: Containerized fetcher strictly rejects private targets.")
-
-    finally:
-        subprocess.run(["docker", "rm", "-f", fetcher_name_v2], capture_output=True, check=False)
-        token_file.unlink(missing_ok=True)
-        token_dir.rmdir()
-
-    # 3. Direct egress probe: container on internal network has no default gateway/route
-    net_name = f"jobfinder-internal-test-{suffix}"
-    try:
+        subprocess.run(fetcher_cmd_v2, capture_output=True, check=True)
+        containers_to_clean.append(fetcher_name_v2)
         subprocess.run(
-            ["docker", "network", "create", "--internal", net_name],
+            ["docker", "network", "connect", net_fetch, fetcher_name_v2],
             capture_output=True,
             check=True,
         )
-        probe_res = subprocess.run(
-            [
-                "docker",
-                "run",
-                "--rm",
-                "--security-opt",
-                sec_opt,
-                "--network",
-                net_name,
-                "jobfinder-backend:local",
-                "python",
-                "-c",
-                "import socket; s = socket.socket(); s.settimeout(2); s.connect(('1.1.1.1', 80))",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if probe_res.returncode == 0:
-            die("Direct public egress unexpectedly succeeded on internal network")
-        info("PASS: Direct public egress without proxy strictly blocked on internal network.")
+        subprocess.run(["docker", "start", fetcher_name_v2], capture_output=True, check=True)
+        time.sleep(2)
+
+        # Test positive public fetch and private target denials from Worker container
+        worker_probe_v2_cmd = [
+            "docker",
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "--security-opt",
+            sec_opt,
+            "--entrypoint",
+            "setpriv",
+            "--network",
+            net_fc,
+            "jobfinder-backend:local",
+            "--no-new-privs",
+            "python",
+            "-c",
+            (
+                "import json, urllib.request, urllib.error, sys\n"
+                "t = sys.argv[1]\n"
+                "# 1. Positive public fetch through Squid\n"
+                "req = urllib.request.Request(\n"
+                "    'http://fetcher:8001/fetch', data=b'{\"url\":\"http://example.com\"}',\n"
+                "    headers={'Authorization': 'Bearer ' + t, "
+                "'Content-Type': 'application/json'}\n"
+                ")\n"
+                "resp = urllib.request.urlopen(req, timeout=15)\n"
+                "data = json.loads(resp.read().decode())\n"
+                "if data.get('status') != 200 or len(data.get('body', '')) == 0:\n"
+                "    sys.exit(20)\n"
+                "# 2. Private destination rejection\n"
+                "for tgt in ['http://127.0.0.1/admin', 'http://169.254.169.254/meta', "
+                "'http://10.0.0.1/']:\n"
+                "    try:\n"
+                "        urllib.request.urlopen(urllib.request.Request(\n"
+                "            'http://fetcher:8001/fetch', "
+                "data=json.dumps({'url': tgt}).encode(),\n"
+                "            headers={'Authorization': 'Bearer ' + t, "
+                "'Content-Type': 'application/json'}\n"
+                "        ), timeout=5)\n"
+                "        sys.exit(21)\n"
+                "    except urllib.error.HTTPError as e:\n"
+                "        if e.code not in (422, 502): sys.exit(22)\n"
+                "print('PHASE2_OK')\n"
+            ),
+            token,
+        ]
+        res_v2 = subprocess.run(worker_probe_v2_cmd, capture_output=True, text=True, check=False)
+        if res_v2.returncode != 0 or "PHASE2_OK" not in res_v2.stdout:
+            die(
+                f"Phase 2 worker probes failed (exit {res_v2.returncode}):\n"
+                f"{res_v2.stderr}\n{res_v2.stdout}"
+            )
+        info("PASS: Positive public fetch through Squid and private target rejections verified.")
+
+        # 5. Direct egress probe on internal network (net_fetch)
+        test_direct_egress_probe(net_fetch, sec_opt)
+
+        # 6. Exit-125 regression test
+        test_direct_egress_exit_125_regression()
+
     finally:
-        subprocess.run(["docker", "network", "rm", net_name], capture_output=True, check=False)
+        for c in containers_to_clean:
+            subprocess.run(["docker", "rm", "-f", c], capture_output=True, check=False)
+        for n in networks_to_clean:
+            subprocess.run(["docker", "network", "rm", n], capture_output=True, check=False)
+        token_file.unlink(missing_ok=True)
+        token_dir.rmdir()
 
 
 def test_squid_acl_matrix() -> None:

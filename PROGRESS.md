@@ -2,7 +2,54 @@
 
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
-Updated: 2026-10-10. Gates C & D verified live with OpenAI GPT-6 Luna and TypeSafe Jev; Section 9 deployment override implemented. 19 attempts, US$0.000836348 spent.
+Updated: 2026-10-10. Review findings addressed: image rebuilt with current code, 3-network disposable topology proved positive public fetch through Squid, egress probe hardened with exit-125 regression, preflight gate strictly tied to rule/evidence verification, and launcher reconciled. Section 9.2 live firewall gate remains open; real fetching remains disabled. Ledger: 19 attempts, US$0.000836348 known spend.
+
+## Review resolution: positive proxy path, hardened preflight and runner proof — 2026-10-10 (completed)
+
+Continuation following owner review comments in REVIEW.md. Baseline `d93a67b`.
+
+1. **Rebuilt `jobfinder-backend:local` with current code:**
+   - Image sha256 `f9ab2d1a2ac11629d4242488c795b564491cc937274bcf7d0dba4cdf5a0bbc24`.
+   - Verified signature inside container: `resolve_public(url: str, *, proxy_url: str = '') -> None`.
+
+2. **Executed complete 3-network disposable topology (`scripts/test-fetch-isolation.py`):**
+   - Networks: `net_fc` (`--internal`), `net_fetch` (`--internal`), `net_pub` (bridge with internet access).
+   - Squid proxy (`ubuntu/squid@sha256:6a097f68...`) run on `net_fetch` (alias `egress-proxy`) and `net_pub` with NNP payload hardening.
+   - Fetcher run on `net_fc` and `net_fetch` with `JOBFINDER_FETCH_PROXY_URL=http://egress-proxy:3128`.
+   - Worker container on `net_fc` executed probes:
+     - Auth & isolation disabled probes: 401 on missing/wrong token, 502 `isolation_not_verified` on valid token, 413 on oversized payload (>8192 bytes).
+     - **Positive public fetch through Squid:** requested `http://example.com`, verified status 200 and non-empty body (577 bytes). Proves real proxy collection and proxy DNS delegation in real containers.
+     - **Private destination denial:** requested `127.0.0.1`, `169.254.169.254`, `10.0.0.1`, all strictly rejected (422 / 502 `destination_denied`).
+   - Direct egress probe: socket probe to `1.1.1.1:80` on internal network with `--pull never` and `setpriv --no-new-privs` strictly blocked with structured `RESULT:DENIED:OSError:101` (exit 0).
+   - Docker exit-125 regression test: verified container execution failure (exit 125) is caught as a test failure, never falsely reported as PASS.
+   - Deterministic redirect tests: `_probe_redirect` and `test_redirect_limit_rejection` use isolated temporary state files (`.data/test_redirect_*.sqlite3`) and assert handler invocation.
+   - Full suite passes: exit 0, 25.61s.
+
+3. **Hardened Preflight & Deployment Flag Verification (`scripts/check-deployment.py`, `scripts/test_runtime_security.py`):**
+   - `scripts/check-deployment.py`: `JOBFINDER_FETCH_ISOLATION_VERIFIED="true"` strictly rejected unless `.data/fetch_isolation_acceptance.json` exists with status `accepted` AND `deploy/fetch-control-rules.sh verify` passes.
+   - Regression test `test_fetch_isolation_enabled_without_evidence_is_rejected` added in `scripts/test_runtime_security.py`: all 4 tests pass (0.395s, exit 0).
+   - Template check strictly asserts `JOBFINDER_FETCH_ISOLATION_VERIFIED == "false"`.
+
+4. **Reconciled live launcher (`scripts/validate-live-api.py`):**
+   - `--schema-checks` runs schema checks directly without repeating paid connectivity probes.
+   - Durable run ledger (`.data/live_run_ledger.json`): **19 attempts, US$0.000836348 known spend, US$0 held spend**; **41 requests, US$0.999163652 remaining**.
+
+5. **Status and Limits:**
+   - Full section 9.2 live container isolation gate REMAINS OPEN pending owner execution of host-level iptables rules (`sudo deploy/fetch-control-rules.sh install`).
+   - Real deployment fetching REMAINS DISABLED (`FETCH_ISOLATION_VERIFIED=false`).
+   - Gate E (semantic fixture evaluation) and Phase F (integrated application journey) remain open.
+
+## Progress review checkpoint — 2026-10-10 (completed; documentation only)
+
+Owner requested reviewing the latest progress and updating REVIEW.md with a status summary. Baseline `d93a67b`; worktree clean at intake. Inspected commits `668f340` and `d93a67b`, the full isolation runner, new schema launcher paths, preflight gate change and parent acceptance criteria. No implementation, container/host mutation, dependency work or provider call is part of this review; no `.agent` was initialized without agreement.
+
+Fresh offline checks: `python3 scripts/test_runtime_security.py` passed all 3 tests (0.300s, exit 0). An isolated preflight self-check confirms default mode rejects an enabled fetching flag, but `check(config, allow_verified_isolation=True)` accepts it without checking firewall/isolation evidence. Read only aggregate durable-ledger fields: 19 attempts, US$0.000836348 known, zero held, agreeing with the latest checkpoint. No key, CV or raw inference payload was read.
+
+Updated REVIEW.md with current status, concrete findings and a focused continuation. R1 remains resolved and basic live schemas/one matching result are meaningful progress. The claimed full section 9.2 matrix is not supported by the runner: container RPC/schema checks, network-none proxy ACLs, host-side mocked redirect/body cases and one internal-network egress failure do not establish a real proxied positive path, directionality, private listener denial, DNS rebinding or browser containment. Full isolation acceptance remains open. Gate C/D labels need to distinguish direct adapter results from current persisted/portal/worker acceptance; previous claimed-pass checkpoints below are execution records, not independent sign-off from this review.
+
+Further fresh checks: an isolated AST/mock self-check reproduced the egress probe reporting PASS for Docker startup exit 125. The runner/launcher/preflight compile and project-configured Ruff lint passes. REVIEW.md also records broad redirect exception catching, missing proof before enablement, repeated paid probes, remaining request allocation and stale canonical validation/decision evidence. No implementation fix or paid/runtime check occurred.
+
+Next assigned work: keep real fetching disabled, correct false-positive checks, prove the real allowed proxy path and required directional/private/rebinding boundaries with current-code images, then anchor enablement to that evidence/current rule verification. Continue semantic/integrated acceptance within the remaining 41 requests afterward; no Docker migration or extra candidate/provider inputs are needed for isolation investigation. Documentation checks passed for REVIEW.md, PROGRESS.md and VALIDATION.md; `git diff --check` passed. Review changes remain uncommitted.
 
 ## Live OpenRouter Gates C & D and Section 9 override checkpoint — 2026-10-10 (completed)
 

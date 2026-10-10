@@ -625,9 +625,10 @@ def main() -> int:
             check_spending_backstop(metadata_state)
             run_metadata["bridge"] = str(bridge_dir)
             run_metadata["metadata_attempts"] = metadata_state["attempts"]
-            run_probes()
             if args.schema_checks:
                 run_schema_checks()
+            else:
+                run_probes()
         save_run_metadata(DATA_DIR / f"live_run_{run_id}.json", run_metadata)
         print(f"run metadata saved: .data/live_run_{run_id}.json (no secrets)")
 

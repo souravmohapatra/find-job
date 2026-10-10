@@ -62,6 +62,12 @@ class RuntimeSecurityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "true or false"):
                 runtime_security_option(configuration())
 
+    def test_fetch_isolation_enabled_without_evidence_is_rejected(self):
+        config = configuration()
+        config["services"]["fetcher"]["environment"]["JOBFINDER_FETCH_ISOLATION_VERIFIED"] = "true"
+        with self.assertRaisesRegex(AssertionError, "cannot be 'true' without verified"):
+            check(config)
+
 
 if __name__ == "__main__":
     unittest.main()

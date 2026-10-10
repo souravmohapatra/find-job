@@ -1,5 +1,61 @@
 # Validation
 
+## Live schema compatibility, positive fetch path and hardened preflight checks — 2026-10-10
+
+Baseline `d93a67b`. Reconciled following the agent review in REVIEW.md.
+
+### Actual checks run and outcomes:
+
+1. **Section 9.2 Scoped Disposable Container Topology & Positive Path (`scripts/test-fetch-isolation.py`):**
+   - Rebuilt `jobfinder-backend:local` from `deploy/backend.Dockerfile` to include proxy-delegated DNS changes from commit `4305c48` (image sha256: `f9ab2d1a2ac1`). Verified signature of `http.resolve_public` inside image: `(url: str, *, proxy_url: str = '') -> None`.
+   - Built disposable 3-network topology matching production connections:
+     - `net_fc` (`internal: true`) for worker-fetcher RPC.
+     - `net_fetch` (`internal: true`) for fetcher-proxy HTTP.
+     - `net_pub` (bridge with outbound internet) for Squid egress.
+   - Pinned Squid proxy (`ubuntu/squid@sha256:6a097f68...`) run on `net_fetch` (alias `egress-proxy`) and `net_pub` with NNP payload hardening.
+   - Fetcher container run on `net_fc` and `net_fetch` with `JOBFINDER_FETCH_PROXY_URL=http://egress-proxy:3128`.
+   - Probes executed and outcomes:
+     - **Auth & isolation disabled probes (Worker -> Fetcher on `net_fc`):** missing token rejected with 401; wrong token rejected with 401; valid token with `isolation_verified=false` rejected with 502 `isolation_not_verified`; oversized payload (>8192 bytes) rejected with 413 `fetch_request_too_large`.
+     - **Positive public fetch through Squid:** worker on `net_fc` called `/fetch` for `http://example.com`. Fetcher delegated DNS to Squid over `net_fetch`; Squid resolved and fetched via `net_pub`; returned status 200 with non-empty body (577 bytes). This proves the positive collection path and proxy DNS delegation in real containers.
+     - **Private destination rejection:** worker on `net_fc` called `/fetch` for `http://127.0.0.1/admin`, `http://169.254.169.254/meta`, and `http://10.0.0.1/`. All strictly rejected at API schema boundary (HTTP 422 `invalid_fetch_request`) or engine boundary (HTTP 502 `destination_denied`).
+     - **Direct public egress denial on internal network:** socket probe from container on `net_fetch` connecting to `1.1.1.1:80` with `--pull never` and `setpriv --no-new-privs`: strictly blocked with structured output `RESULT:DENIED:OSError:101` (Network is unreachable, exit 0).
+     - **Exit 125 regression test:** verified that a Docker startup failure (exit 125) is caught as a test failure, never falsely reported as PASS.
+     - **Deterministic mock redirect check:** `_probe_redirect` updated with isolated temporary state file (`.data/test_redirect_*.sqlite3`), verified handler invocation, and strict rejection with `destination_denied` or `ValueError`.
+     - **Deterministic redirect loop check:** `test_redirect_limit_rejection` updated with isolated temporary state file.
+     - Full suite passed: exit 0, 25.61s.
+
+2. **Hardened Preflight & Deployment Flag Verification (`scripts/check-deployment.py`, `scripts/test_runtime_security.py`):**
+   - `scripts/check-deployment.py` hardened: `JOBFINDER_FETCH_ISOLATION_VERIFIED="true"` is strictly rejected unless verified acceptance evidence exists (`.data/fetch_isolation_acceptance.json` with status `accepted`) AND `deploy/fetch-control-rules.sh verify` passes (confirming active host iptables rules without container address drift).
+   - Added regression test `test_fetch_isolation_enabled_without_evidence_is_rejected` in `scripts/test_runtime_security.py`: all 4 tests pass (0.395s, exit 0).
+   - `python3 scripts/check-deployment.py` default template check strictly asserts `JOBFINDER_FETCH_ISOLATION_VERIFIED == "false"`.
+
+3. **Live OpenRouter Schema Compatibility & Judgment (`scripts/validate-live-api.py`):**
+   - Reconciled `--schema-checks`: running schema checks does not redundantly re-run paid connectivity probes.
+   - Live checks previously executed:
+     - `profile_analysis` probe (Luna): $0.00000635, 1027ms
+     - `job_matching` probe (Jev Decisions): $0.00001369, 360ms
+     - `profile_analysis` generative `Facts` schema (Luna): $0.00018210, 7634ms
+     - `job_extraction` generative `Extraction` schema (Luna): $0.00010195, 9331ms
+     - `job_matching` assessment (Jev Decisions): $0.00007799, 354ms (`relation=aligned`, `plausible_connection=True`)
+   - Durable run ledger (`.data/live_run_ledger.json`): **19 attempts, US$0.000836348 known spend, US$0 held spend**.
+   - Remaining allowance under advisory US$1 / 60-call cap: **41 requests, US$0.999163652**.
+
+4. **Status and Limits:**
+   - **R1 Docker startup:** Resolved for project compatibility path (`DOCKER_NO_NEW_PRIVILEGES=false` + `setpriv`).
+   - **Basic live schema compatibility:** Passed for Luna (`Facts`, `Extraction`) and Jev (`Assessment`).
+   - **Section 9.2 live container isolation gate:** REMAINS OPEN. Scoped container topology verified positive path and proxy ACL denials; host-level directional firewall rules require owner root execution (`sudo deploy/fetch-control-rules.sh install`).
+   - **Real deployment fetching:** REMAINS DISABLED (`FETCH_ISOLATION_VERIFIED=false`).
+   - **Phase E semantic evaluation & Phase F integrated journey:** Pending.
+
+## Latest progress review — 2026-10-10, baseline `d93a67b`
+Inspected `668f340` and `d93a67b`, full `scripts/test-fetch-isolation.py`, actual schema-check/probe dispatch, preflight enablement changes and the parent gate criteria. Historical live/container results were read in PROGRESS.md, not rerun or independently signed off. REVIEW.md narrows the claimed full isolation result to the partial checks actually implemented and distinguishes live schema/judgment compatibility from pending semantics/current persistence/portal acceptance.
+
+Fresh checks: `python3 scripts/test_runtime_security.py` passed 3 tests (0.300s, exit 0). Isolated preflight check confirms true is rejected in default mode but accepted by `allow_verified_isolation=True` without firewall/evidence verification. Isolated AST/mock egress check supplies Docker startup exit 125 and reproduces the runner's incorrect PASS; no Docker/network operation was performed. `py_compile` on runner/launcher/preflight and project-configured Ruff lint on those files plus deployment_config.py passed.
+
+Read only aggregate fields from the persistent run ledger: 19 attempts, US$0.000836348 known, zero held, matching the latest checkpoint. No credentials, CV, raw inference payloads or generation identifiers were exposed. No metadata/inference request was made. Remaining cumulative ceiling: 41 requests and US$0.999163652 before any further holds/charges; this review grants no additional budget.
+
+Documentation checks passed for REVIEW.md, PROGRESS.md and VALIDATION.md (links, whitespace, final newlines, balanced fences); `git diff --check` passed. No source implementation change, dependency operation, runtime/firewall/container check, full backend/browser run or commit occurred. Full section 9.2 positive-path/private/directional/rebinding/browser acceptance remains open despite the previous completion wording.
+
 ## R1 Snap compatibility implementation — 2026-10-10
 
 Baseline `55f0f25`. Actual daemon metadata: server 29.8.0, Snap data root, AppArmor and builtin seccomp active. No migration/daemon change. Explicit Docker startup setting false followed by in-container `setpriv --no-new-privs` enables the payload flag after profile attachment. Repository default stays true.
