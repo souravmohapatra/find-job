@@ -566,3 +566,17 @@ Addressed the review findings in [REVIEW.md](REVIEW.md) and [ADVISE.md](ADVISE.m
 6. **Limits:**
    - No new live inference requests were made in this session (spend remains US$0.000020042).
    - Gates C (actual generative schemas), D (live semantic evaluation), E, F, real container isolation matrix, and deployment gates remain open.
+
+## UI/UX review evidence — 2026-10-12
+
+Documentation-only review at baseline `e6b1fa9`; findings and future acceptance suggestions are in [UIUX_REVIEW.md](UIUX_REVIEW.md). No frontend implementation changed.
+
+- `cd frontend && npm run test:e2e -- --output=/tmp/jobfinder-uiux-foundation`: **exit 1, 3 failed**. At 375/768/1440px, `frontend/tests/browser/foundation.spec.ts:67` timed out after 5000ms expecting the Jobs heading to be focused; received inactive. Login axe assertions completed first. Later layout/Jobs axe/Settings/logout checks were not reached. Traces/error contexts retained under the stated temporary output directory.
+- `node /tmp/jobfinder-uiux-inspect.mjs`: **exit 0**. Installed headless Chrome and an isolated loopback Vite server; synthetic API fixtures only, non-local requests blocked. Jobs, Companies, company detail, job detail, Profile and Settings inspected at 375/768/1440px with height 900px: **18 axe scans with zero violations**, ordinary-fixture document widths matched viewports; no unexpected requests/page errors. Current screenshots and DOM results retained in `/tmp/jobfinder-uiux-review/`. Server/browser closed on completion.
+- Targeted browser observations: profile changes lost on route departure/return; a blank preference in a collapsed disclosure left its validation error hidden with no alert and focus on Save; a background 503 removed cached company and job content; a 203-character unbroken job title caused 3008px document width at 375px; lazy navigation focused main rather than the destination heading. These are reproduced defects/limitations, not passing acceptance results.
+- CSS token calculations: `#dce2e9` against white 1.304:1; muted text on white 5.895:1; muted text on page background 5.548:1; accent on white 6.453:1; body text on white 14.629:1. Control-boundary contrast must be distinguished from decorative separators.
+- Impeccable context/detector launcher attempts with downloads disabled exited 127 without output. Automated Impeccable scan unavailable, not a clean scan. Initial sandbox shell execution failed with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` (exit 1); approved escalated execution worked. No dependency operation or workaround was attempted.
+
+No screen-reader/physical-device/cross-browser/actual-zoom/performance benchmark, backend integration suite, live provider or notification check was run. Historical broader pass records are not fresh evidence for this review. Proposed acceptance checks in UIUX_REVIEW.md remain unexecuted.
+
+Review-document checks passed: 14 ordered findings, all local Markdown links resolve, all cited frontend line numbers exist, new report has no trailing whitespace, final newlines present. Initial fixture-length assertion failed and corrected the draft from 196 to the measured 203 characters; no application behavior changed. Temporary review server ports 5173/5174 confirmed closed.
