@@ -24,7 +24,7 @@
 }
 
 (notifications) {
-	reverse_proxy ntfy:8080 {
+	reverse_proxy ntfy:80 {
 		flush_interval -1
 	}
 }
@@ -38,11 +38,10 @@ https://{$LAN_HOST}:9443 {
 	tls internal
 	import notifications
 }
-
-http://{$TAILNET_HOST}:8080 {
+http://{$TAILNET_HOST}:{$APP_LOOPBACK_PORT:8085} {
 	import app
 }
 
-http://{$TAILNET_HOST}:8081 {
+http://{$TAILNET_HOST}:{$NOTIFY_LOOPBACK_PORT:8086} {
 	import notifications
 }

@@ -598,7 +598,7 @@ class RecoveryTests(unittest.TestCase):
                 ("api", "running"),
                 ("worker", "running"),
                 ("ai-worker", "exited"),
-                ("ntfy", "running"),
+                ("fetcher", "running"),
             ]
         ]
 
@@ -632,7 +632,7 @@ class RecoveryTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "Synthetic source failure"):
                 backup.capture(["compose"], config, self.folder, self.home, self.recipient)
-        self.assertEqual([call[-1] for call in calls if "start" in call], ["ntfy", "api", "worker"])
+        self.assertEqual([call[-1] for call in calls if "start" in call], ["fetcher", "api", "worker"])
         self.assertEqual(
             json.loads((self.folder / "operation.json").read_text())["state"], "services_resumed"
         )

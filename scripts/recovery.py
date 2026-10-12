@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-VOLUMES = ("documents", "ntfy_state", "caddy_data", "caddy_config", "fetch_state")
+VOLUMES = ("documents", "caddy_data", "caddy_config", "fetch_state")
 PAYLOADS = ("database.dump.gpg", *(f"{name}.tar.gpg" for name in VOLUMES))
 MAX_PLAINTEXT = 64 * 1024**3
 

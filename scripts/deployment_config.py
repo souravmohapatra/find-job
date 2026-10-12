@@ -27,8 +27,11 @@ def configuration(env_file: Path | None = None) -> dict[str, Any]:
             LAN_IP="192.168.1.20",
             LAN_HOST="jobs.home.arpa",
             TAILNET_HOST="jobs.example-tailnet.ts.net",
-            NTFY_IMAGE="binwiederhier/ntfy@sha256:"
-            "f2419f405127afa868f10985c1a41449e673477cee1eb19994339a5ae8b592e7",
+            NTFY_NETWORK="ntfy_default",
+            JOBFINDER_NTFY_URL="http://ntfy:80",
+            NTFY_TOPIC="jobfinder",
+            APP_LOOPBACK_PORT="8085",
+            NOTIFY_LOOPBACK_PORT="8086",
             INTEGRATION_MODE="mock",
             SEARCH_MODE="mock",
             NOTIFICATION_MODE="mock",

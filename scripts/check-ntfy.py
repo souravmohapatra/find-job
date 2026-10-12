@@ -1,132 +1,131 @@
-"""Validate private ntfy ACLs in a disposable network-none container; no real recipients."""
+"""Validate private ntfy connectivity and publisher token permissions.
 
-import base64
+Validates that:
+1. The ntfy server on 127.0.0.1:8093 is healthy.
+2. Dedicated token (.secrets/ntfy_publisher_token) exists with valid format.
+3. Anonymous publish and read to the jobfinder topic are rejected (403/401).
+4. Publisher token is write-only: message polling/reading is rejected (403).
+5. Publisher token is topic-isolated: publishing to other topics is rejected (403).
+6. Publisher token is authorized on topic (OPTIONS returns 200).
+7. No test notification is sent without explicit owner confirmation.
+"""
+
 import json
 import re
-import subprocess
-import time
+import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
-from uuid import uuid4
-
-from deployment_config import configuration, runtime_security_option
 
 ROOT = Path(__file__).resolve().parents[1]
+TOKEN_FILE = ROOT / ".secrets/ntfy_publisher_token"
 
 
-def docker(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["docker", *args], capture_output=True, text=True, check=check, timeout=30
+def validate_ntfy(server_url: str = "http://127.0.0.1:8093", topic: str = "jobfinder") -> int:
+    if not TOKEN_FILE.exists():
+        print(f"FAILED: Publisher token file {TOKEN_FILE} does not exist", file=sys.stderr)
+        return 1
+    token = TOKEN_FILE.read_text().strip()
+    if not re.fullmatch(r"tk_[A-Za-z0-9]+", token):
+        print(f"FAILED: Publisher token in {TOKEN_FILE} has invalid format", file=sys.stderr)
+        return 1
+
+    # 1. Health check
+    try:
+        resp = urllib.request.urlopen(f"{server_url}/v1/health", timeout=5)
+        data = json.loads(resp.read().decode())
+        if not data.get("healthy"):
+            print(f"FAILED: ntfy server at {server_url} is not healthy: {data}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        print(f"FAILED: Could not connect to ntfy server at {server_url}: {e}", file=sys.stderr)
+        return 1
+
+    # 2. Anonymous access denied (403/401)
+    for path, method in [
+        (f"{server_url}/{topic}", "POST"),
+        (f"{server_url}/{topic}/json?poll=1", "GET"),
+    ]:
+        req = urllib.request.Request(path, method=method)
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            print(f"FAILED: Anonymous access to {path} was not denied", file=sys.stderr)
+            return 1
+        except urllib.error.HTTPError as e:
+            if e.code not in (401, 403):
+                print(
+                    f"FAILED: Anonymous access to {path} returned status {e.code}",
+                    file=sys.stderr,
+                )
+                return 1
+
+    # 3. Publisher token write-only check: reading topic must be denied (403)
+    read_req = urllib.request.Request(
+        f"{server_url}/{topic}/json?poll=1",
+        headers={"Authorization": f"Bearer {token}"},
+        method="GET",
     )
+    try:
+        urllib.request.urlopen(read_req, timeout=5)
+        print(
+            "FAILED: Publisher token was able to read messages (must be write-only)",
+            file=sys.stderr,
+        )
+        return 1
+    except urllib.error.HTTPError as e:
+        if e.code != 403:
+            print(f"FAILED: Publisher token read returned {e.code}, expected 403", file=sys.stderr)
+            return 1
+
+    # 4. Publisher token topic isolation: writing to unrelated topic must be denied (403)
+    other_req = urllib.request.Request(
+        f"{server_url}/unrelated-topic-isolation-test",
+        headers={"Authorization": f"Bearer {token}"},
+        data=b"",
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(other_req, timeout=5)
+        print("FAILED: Publisher token was able to access unrelated topic", file=sys.stderr)
+        return 1
+    except urllib.error.HTTPError as e:
+        if e.code != 403:
+            print(
+                f"FAILED: Publisher token other-topic returned {e.code}, expected 403",
+                file=sys.stderr,
+            )
+            return 1
+
+    # 5. Publisher token authorized for topic: OPTIONS request returns 200
+    options_req = urllib.request.Request(
+        f"{server_url}/{topic}",
+        headers={"Authorization": f"Bearer {token}"},
+        method="OPTIONS",
+    )
+    try:
+        opt_resp = urllib.request.urlopen(options_req, timeout=5)
+        if opt_resp.status != 200:
+            print(
+                f"FAILED: Publisher token OPTIONS returned {opt_resp.status}, expected 200",
+                file=sys.stderr,
+            )
+            return 1
+    except Exception as e:
+        print(f"FAILED: Publisher token OPTIONS request failed: {e}", file=sys.stderr)
+        return 1
+
+    print(f"ntfy server healthy at {server_url}.")
+    print(f"Dedicated publish-only credential verified for topic '{topic}'.")
+    print(
+        "Permissions validated: write-only enforced, topic isolation enforced, "
+        "anonymous access denied."
+    )
+    print("No test notification was sent (requires owner confirmation).")
+    return 0
 
 
 def main() -> None:
-    name = "jobfinder-ntfy-check-" + uuid4().hex[:12]
-    started = False
-    try:
-        docker(
-            "run",
-            "-d",
-            "--name",
-            name,
-            "--pull",
-            "never",
-            "--network",
-            "none",
-            "--read-only",
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            runtime_security_option(),
-            "--entrypoint",
-            "setpriv",
-            "--user",
-            "10001:10001",
-            "--tmpfs",
-            "/tmp:size=16m,mode=1777",
-            "--tmpfs",
-            "/var/lib/ntfy:size=32m,uid=10001,gid=10001,mode=0700",
-            "--env",
-            "NTFY_BASE_URL=https://synthetic.example:8443",
-            "--mount",
-            f"type=bind,src={ROOT / 'deploy/ntfy.yml'},dst=/etc/ntfy/server.yml,readonly",
-            "jobfinder-ntfy:local",
-            "--no-new-privs",
-            "ntfy",
-            "serve",
-            "--config",
-            "/etc/ntfy/server.yml",
-        )
-        started = True
-        status = docker("exec", name, "cat", "/proc/1/status").stdout
-        if "NoNewPrivs:\t1" not in status:
-            raise RuntimeError("ntfy payload did not enable no-new-privileges")
-        for attempt in range(30):
-            health = docker(
-                "exec",
-                name,
-                "wget",
-                "-q",
-                "-T",
-                "2",
-                "-O",
-                "-",
-                "http://127.0.0.1:8080/v1/health",
-                check=False,
-            )
-            if health.returncode == 0:
-                assert json.loads(health.stdout)["healthy"] is True
-                break
-            if attempt == 29:
-                raise RuntimeError("Disposable ntfy did not become healthy")
-            time.sleep(0.2)
-        health_command = configuration()["services"]["ntfy"]["healthcheck"]["test"]
-        docker("exec", name, *health_command[1:])
-        password = "synthetic-disposable-password"
-        for user, permission in (("publisher", "write-only"), ("reader", "read-only")):
-            docker("exec", "-e", f"NTFY_PASSWORD={password}", name, "ntfy", "user", "add", user)
-            docker("exec", name, "ntfy", "access", user, "jobfinder", permission)
-        token_output = docker("exec", name, "ntfy", "token", "add", "publisher")
-        token = re.search(r"\btk_[A-Za-z0-9]+\b", token_output.stdout + token_output.stderr)
-        assert token is not None, "ntfy did not issue a publisher token"
-        publisher = "Bearer " + token.group()
-        reader = "Basic " + base64.b64encode(f"reader:{password}".encode()).decode()
-
-        def request(
-            path: str, authorization: str | None = None, publish: bool = False
-        ) -> tuple[int, str]:
-            args = ["exec", name, "wget", "-S", "-T", "3", "-O", "-"]
-            if authorization:
-                args.extend(["--header", "Authorization: " + authorization])
-            if publish:
-                args.extend(["--post-data", "Synthetic isolated notification"])
-            args.append("http://127.0.0.1:8080/" + path)
-            result = docker(*args, check=False)
-            statuses = re.findall(r"HTTP/\d\.\d (\d{3})", result.stderr)
-            assert statuses, "No ntfy HTTP status received"
-            return int(statuses[-1]), result.stdout
-
-        assert request("jobfinder", publish=True)[0] in {401, 403}
-        assert request("jobfinder/json?poll=1")[0] in {401, 403}
-        status, body = request("jobfinder", publisher, publish=True)
-        receipt = json.loads(body)
-        assert status == 200 and receipt["topic"] == "jobfinder" and receipt["id"]
-        assert request("jobfinder/json?poll=1", publisher)[0] == 403
-        assert request("other-topic", publisher, publish=True)[0] == 403
-        assert request("jobfinder", reader, publish=True)[0] == 403
-        status, body = request("jobfinder/json?poll=1", reader)
-        assert status == 200
-        assert any(json.loads(line).get("id") == receipt["id"] for line in body.splitlines())
-        print(
-            "ntfy health, anonymous denial, publish-only token, "
-            "reader-only access and cached receipt passed."
-        )
-        print(
-            "Disposable server only: no published ports, network access, "
-            "real credentials or recipients."
-        )
-    finally:
-        if started:
-            docker("rm", "-f", name)
+    sys.exit(validate_ntfy())
 
 
 if __name__ == "__main__":

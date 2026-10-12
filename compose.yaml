@@ -21,7 +21,7 @@ x-backend: &backend
     JOBFINDER_NOTIFICATION_MODE: ${NOTIFICATION_MODE:-mock}
     JOBFINDER_ALLOWED_ORIGINS: '["https://${LAN_HOST:?Set LAN_HOST}","https://${TAILNET_HOST:?Set TAILNET_HOST}"]'
     JOBFINDER_ALLOWED_HOSTS: '["${LAN_HOST}","${TAILNET_HOST}","localhost","api"]'
-    JOBFINDER_NTFY_URL: http://ntfy:8080
+    JOBFINDER_NTFY_URL: ${JOBFINDER_NTFY_URL:-http://ntfy:80}
     JOBFINDER_NTFY_TOPIC: ${NTFY_TOPIC:-jobfinder}
     JOBFINDER_NOTIFICATION_APP_URL: https://${TAILNET_HOST}
   secrets: [db_password]
@@ -89,7 +89,6 @@ services:
     depends_on:
       queue-bootstrap: {condition: service_completed_successfully}
       fetcher: {condition: service_healthy}
-      ntfy: {condition: service_healthy}
   ai-worker:
     <<: *backend
     command: [python, -m, app.tasks, --queues, ai, --concurrency, '2']
@@ -138,42 +137,6 @@ services:
     networks: [fetch, public_outbound]
     mem_limit: 256m
     pids_limit: 128
-  ntfy:
-    <<: *runtime
-    entrypoint: [setpriv, --no-new-privs, ntfy]
-    image: jobfinder-ntfy:local
-    build:
-      context: .
-      dockerfile: deploy/ntfy.Dockerfile
-      args:
-        NTFY_IMAGE: ${NTFY_IMAGE:-binwiederhier/ntfy@sha256:f2419f405127afa868f10985c1a41449e673477cee1eb19994339a5ae8b592e7}
-    command: [serve, --config, /etc/ntfy/server.yml]
-    environment:
-      NTFY_BASE_URL: https://${TAILNET_HOST}:8443
-    volumes:
-      - ntfy_state:/var/lib/ntfy
-      - ./deploy/ntfy.yml:/etc/ntfy/server.yml:ro
-    networks: [notification]
-    user: '10001:10001'
-    init: true
-    healthcheck:
-      test:
-        - CMD
-        - setpriv
-        - --no-new-privs
-        - /bin/sh
-        - -c
-        - >-
-          wget -q -T 3 -O - http://localhost:8080/v1/health |
-          grep -Eq '"healthy"[[:space:]]*:[[:space:]]*true'
-      interval: 15s
-      timeout: 5s
-      retries: 5
-    read_only: true
-    tmpfs: ['/tmp:size=32m,mode=1777']
-    cap_drop: [ALL]
-    mem_limit: 256m
-    pids_limit: 128
   edge:
     <<: *runtime
     command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
@@ -184,16 +147,17 @@ services:
     environment:
       LAN_HOST: ${LAN_HOST}
       TAILNET_HOST: ${TAILNET_HOST}
+      APP_LOOPBACK_PORT: ${APP_LOOPBACK_PORT:-8085}
+      NOTIFY_LOOPBACK_PORT: ${NOTIFY_LOOPBACK_PORT:-8086}
     ports:
       - '${LAN_IP:?Set the private LAN IPv4 address}:443:8443'
       - '${LAN_IP}:8443:9443'
-      - '127.0.0.1:8080:8080'
-      - '127.0.0.1:8081:8081'
+      - '127.0.0.1:${APP_LOOPBACK_PORT:-8085}:${APP_LOOPBACK_PORT:-8085}'
+      - '127.0.0.1:${NOTIFY_LOOPBACK_PORT:-8086}:${NOTIFY_LOOPBACK_PORT:-8086}'
     volumes: [caddy_data:/data, caddy_config:/config]
     networks: [core, notification]
     depends_on:
       api: {condition: service_healthy}
-      ntfy: {condition: service_healthy}
     user: '10001:10001'
     read_only: true
     tmpfs: ['/tmp:size=32m,mode=1777']
@@ -210,12 +174,13 @@ volumes:
   postgres:
   documents:
   fetch_state:
-  ntfy_state:
   caddy_data:
   caddy_config:
 networks:
   core: {internal: true}
-  notification: {internal: true}
+  notification:
+    name: ${NTFY_NETWORK:-ntfy_default}
+    external: true
   fetch_control: {internal: true}
   fetch: {internal: true}
   provider_outbound: {}

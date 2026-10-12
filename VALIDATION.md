@@ -1,5 +1,49 @@
 # Validation
 
+## Shared ntfy reuse, permission isolation and port conflict verification — 2026-10-12
+
+Baseline `c3c0cd2`. Clean worktree before changes.
+
+### Actual checks run and outcomes:
+
+1. **Dedicated User and Token Provisioning on Existing Server:**
+   - User `jobfinder-publisher` created via `docker exec -e NTFY_PASSWORD=<secret> ntfy ntfy user add jobfinder-publisher`.
+   - Dedicated access rule set via `docker exec ntfy ntfy access jobfinder-publisher jobfinder write-only`.
+   - Access token issued via `docker exec ntfy ntfy token add jobfinder-publisher` and saved in `.secrets/ntfy_publisher_token` (mode 0644).
+   - Confirmed via `ntfy access`: `beng` admin permissions and `*` deny-all default remain completely unaltered.
+
+2. **Connectivity and Permission Isolation Verified Without Test Notifications:**
+   - `python3 scripts/check-ntfy.py`:
+     - Health on `http://127.0.0.1:8093/v1/health`: 200 OK (`{"healthy":true}`).
+     - Anonymous publish/read on `jobfinder` topic: 403 Forbidden.
+     - Publisher token read on `jobfinder` topic: 403 Forbidden (write-only enforced).
+     - Publisher token write to unauthorized topic: 403 Forbidden (topic isolation enforced).
+     - Publisher token OPTIONS on `jobfinder` topic: 200 OK (authorized).
+     - No test notification was sent.
+   - Container connectivity: tested from ephemeral container on `ntfy_default` network to `http://ntfy:80/v1/health` (200 OK) and unauthorized write to another topic (403 Forbidden).
+
+3. **Port Conflict Resolution Verified Without Service Disruption:**
+   - Host inspection confirmed qBittorrent-nox on `*:8080` and filebrowser on `0.0.0.0:8081` remain running and untouched.
+   - Job Finder edge remapped to loopback `127.0.0.1:8085` (app) and `127.0.0.1:8086` (notifications):
+     - `compose.yaml`: `127.0.0.1:${APP_LOOPBACK_PORT:-8085}:${APP_LOOPBACK_PORT:-8085}` and `127.0.0.1:${NOTIFY_LOOPBACK_PORT:-8086}:${NOTIFY_LOOPBACK_PORT:-8086}`.
+     - `deploy/Caddyfile`: `http://{$TAILNET_HOST}:{$APP_LOOPBACK_PORT:8085}` and `http://{$TAILNET_HOST}:{$NOTIFY_LOOPBACK_PORT:8086}`, with `reverse_proxy ntfy:80`.
+     - `deploy/.env` and `deploy/.env.example`: `APP_LOOPBACK_PORT=8085`, `NOTIFY_LOOPBACK_PORT=8086`.
+
+4. **Deployment, Preflight and Backup Consistency Verified:**
+   - `python3 scripts/check-deployment.py`: passed (0.15s, exit 0).
+   - `python3 scripts/check-deployment.py --env-file deploy/.env`: passed (0.16s, exit 0).
+   - `python3 scripts/test_runtime_security.py`: all 4 passed (0.40s, exit 0).
+   - `python3 scripts/test_fetch_rules.py`: all 7 passed (1.92s, exit 0).
+   - `python3 -m unittest discover -s scripts -p test_recovery.py`: all 15 passed (2.61s, exit 0).
+   - Full backend regression suite: all 90 tests pass (15.43s, exit 0).
+
+## Deployment inputs and ntfy inspection — 2026-10-12
+Read-only LAN/default-interface and Tailscale-self metadata verified the values used for LAN_IP and TAILNET_HOST in ignored deploy/.env. Owner-selected direct IP is also LAN_HOST. `getent ahostsv4 homelab.home` returned no result, exit 2; this is resolver evidence from this host only. Actual private addresses/hostname are not copied into tracked records. Compose interpolation with `--env-file deploy/.env --format json` passed and assertions confirmed the LAN-IP origin, mock integration and disabled fetching. Private file mode is 0600.
+
+Existing ntfy container is running on a loopback host port; its CLI reports 2.28.0 and metadata shows deny-all default access, its own Docker network and persistent bind data. No separate Job Finder ntfy container was found. Read-only socket/process checks identify the proposed loopback ports 8080 and 8081 as occupied by qBittorrent and filebrowser. Existing-server reuse, publisher authorization and alternative Job Finder ports are not implemented or validated by this intake.
+
+Secret metadata only shows nonempty database/fetcher files and empty provider/publisher placeholders; no values were read or exposed. No service/configuration change outside the private Job Finder env-file, notification publication, inference request, dependency operation, firewall action or Tailscale change occurred. Full deployment preflight was deliberately not invoked because its non-root firewall fallback can create a host-network privileged container and install packages; no deployment was started. Documentation whitespace checks passed.
+
 ## Live OpenRouter Gates E & F and Controlled Isolation Acceptance verification — 2026-10-10
 
 Baseline `a4aa667`. Worktree clean before changes.

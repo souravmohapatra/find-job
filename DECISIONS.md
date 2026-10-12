@@ -1,5 +1,11 @@
 # Decision register
 
+## Owner deployment preferences — 2026-10-12
+
+Owner selected direct LAN-IP access for now after the proposed homelab hostname did not resolve from this server. Verified LAN address and Tailscale self hostname are saved only in ignored deploy/.env; no local DNS record or Tailscale Serve configuration was created. Mock integration modes and fetching-disabled state remain unchanged by configuration intake.
+
+Owner explicitly selected reuse of the already-running ntfy instance rather than creating a second Job Finder ntfy server. Preserve that existing service, accounts and data; implement a private application/publisher connection and adapt deployment/backup ownership accordingly before full startup. The current Compose configuration is still bundled-server-specific, so the choice is recorded as a requirement, not a verified reuse capability. Existing applications occupy the proposed loopback ports; adjust Job Finder rather than stopping them.
+
 ## R1 solution without Docker migration — 2026-10-10
 
 Owner assigned removal of the Snap Docker NNP startup blocker and explicitly excluded Docker migration. Selected and tested the smallest project-local workaround: keep Docker startup NNP enabled by default, allow explicit `DOCKER_NO_NEW_PRIVILEGES=false` for this Snap host, and always apply `setpriv --no-new-privs` inside the already-attached container profile before service/helper execution. Health checks use the same wrapper. Preflight rejects missing payload/health wrappers, inconsistent startup options and invalid setting values.

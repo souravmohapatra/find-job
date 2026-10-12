@@ -70,7 +70,6 @@ def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
         "ai-worker",
         "fetcher",
         "egress-proxy",
-        "ntfy",
         "edge",
     }
     assert set(services) == expected, "Unexpected deployment services"
@@ -83,7 +82,6 @@ def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
         "worker": {"db_password", "fetcher_token", "brave_api_key", "ntfy_publisher_token"},
         "fetcher": {"fetcher_token"},
         "edge": set(),
-        "ntfy": set(),
         "egress-proxy": set(),
     }
     for name, service in services.items():
@@ -113,11 +111,7 @@ def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
         assert service["logging"]["options"] == {"max-size": "10m", "max-file": "3"}
     assert set(services["fetcher"]["networks"]) == {"fetch", "fetch_control"}
     assert set(services["egress-proxy"]["networks"]) == {"fetch", "public_outbound"}
-    assert set(services["ntfy"]["networks"]) == {"notification"}
-    ntfy_image = services["ntfy"]["build"]["args"]["NTFY_IMAGE"]
-    assert re.fullmatch(r"binwiederhier/ntfy(?:[:][^@\s]+)?@sha256:[0-9a-f]{64}", ntfy_image)
-    assert not ntfy_image.endswith("0" * 64), "Use a real ntfy image digest"
-    assert services["ntfy"]["user"] == "10001:10001"
+    # ntfy service is external (reusing existing ntfy container)
     assert set(services["db"]["networks"]) == {"core"}
     isolation_setting = services["fetcher"]["environment"]["JOBFINDER_FETCH_ISOLATION_VERIFIED"]
     if isolation_setting == "true":
@@ -143,15 +137,30 @@ def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
         )
     assert {item["source"] for item in services["fetcher"]["secrets"]} == {"fetcher_token"}
     assert "openrouter_api_key" not in {item["source"] for item in services["worker"]["secrets"]}
-    for name in ("core", "fetch", "fetch_control", "notification"):
+    for name in ("core", "fetch", "fetch_control"):
         assert config["networks"][name]["internal"]
+    assert config["networks"]["notification"].get("external") is True, (
+        "notification network must be external to reuse existing ntfy server"
+    )
     ports = services["edge"]["ports"]
     assert len(ports) == 4
+    app_port = str(
+        config["services"]["edge"].get("environment", {}).get("APP_LOOPBACK_PORT", "8085")
+    )
+    notify_port = str(
+        config["services"]["edge"].get("environment", {}).get("NOTIFY_LOOPBACK_PORT", "8086")
+    )
+    assert app_port not in ("8080", "8081"), (
+        "APP_LOOPBACK_PORT must not conflict with qBittorrent (8080) or filebrowser (8081)"
+    )
+    assert notify_port not in ("8080", "8081"), (
+        "NOTIFY_LOOPBACK_PORT must not conflict with qBittorrent (8080) or filebrowser (8081)"
+    )
     assert {(port["target"], str(port["published"])) for port in ports} == {
         (8443, "443"),
         (9443, "8443"),
-        (8080, "8080"),
-        (8081, "8081"),
+        (int(app_port), app_port),
+        (int(notify_port), notify_port),
     }
     origins = json.loads(services["api"]["environment"]["JOBFINDER_ALLOWED_ORIGINS"])
     assert len(origins) == 2 and all(
@@ -162,7 +171,7 @@ def check(config: dict, *, allow_verified_isolation: bool = False) -> None:
     ]
     for port in ports:
         address = ipaddress.ip_address(port["host_ip"])
-        if port["target"] in (8080, 8081):
+        if port["target"] in (int(app_port), int(notify_port)):
             assert str(address) == "127.0.0.1"
         else:
             assert port["target"] in (8443, 9443) and any(address in network for network in lan), (

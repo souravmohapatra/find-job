@@ -1,5 +1,42 @@
 # Progress and continuation
 
+Updated: 2026-10-12. Configured Job Finder to reuse existing host ntfy server (ntfy_default) with dedicated write-only credentials; resolved loopback port conflicts (8085/8086) without touching qBittorrent or filebrowser. Preflight and backups updated consistently.
+
+## Shared ntfy reuse and port conflict resolution checkpoint — 2026-10-12 (completed)
+
+1. **Reused existing ntfy server without altering other users, data or services:**
+   - Identified running host ntfy container (`binwiederhier/ntfy:latest`) on network `ntfy_default` (published on host `127.0.0.1:8093`).
+   - Configured dedicated user `jobfinder-publisher` via `ntfy user add` and granted strictly `write-only` access to topic `jobfinder` via `ntfy access`.
+   - Issued dedicated token and stored in `.secrets/ntfy_publisher_token` (mode 0644).
+   - Confirmed existing admin user `beng` and default `deny-all` anonymous access remain completely intact and unaltered.
+   - Removed bundled `ntfy` service, Dockerfile reference, and `ntfy_state` volume from `compose.yaml`.
+   - Configured `notification` network as `external: true` (pointing to `ntfy_default`) in `compose.yaml`.
+   - Set private connection URL `JOBFINDER_NTFY_URL=http://ntfy:80`.
+
+2. **Resolved host port conflicts without stopping qBittorrent or filebrowser:**
+   - Identified conflicts: qBittorrent-nox listening on `*:8080`, filebrowser listening on `0.0.0.0:8081`. Neither service was stopped or modified.
+   - Remapped Job Finder edge loopback listeners to conflict-free ports `8085` (app) and `8086` (notifications):
+     - `compose.yaml`: `127.0.0.1:${APP_LOOPBACK_PORT:-8085}:${APP_LOOPBACK_PORT:-8085}` and `127.0.0.1:${NOTIFY_LOOPBACK_PORT:-8086}:${NOTIFY_LOOPBACK_PORT:-8086}`.
+     - `deploy/Caddyfile`: `http://{$TAILNET_HOST}:{$APP_LOOPBACK_PORT:8085}` and `http://{$TAILNET_HOST}:{$NOTIFY_LOOPBACK_PORT:8086}`, with `reverse_proxy ntfy:80`.
+     - `deploy/.env` and `deploy/.env.example`: `APP_LOOPBACK_PORT=8085`, `NOTIFY_LOOPBACK_PORT=8086`.
+
+3. **Updated deployment, preflight and backup guidance consistently:**
+   - `scripts/check-deployment.py`: removed bundled ntfy service assertions; validated `notification` network is external; validated edge loopback ports on 8085/8086 while rejecting conflicts with 8080/8081.
+   - `scripts/backup.py` & `scripts/recovery.py`: removed `"ntfy"` from writers and restart order, removed `"ntfy_state"` from managed volumes (Job Finder backs up only its own state; external ntfy persists independently).
+   - `scripts/test_recovery.py`: updated recovery test assertions (15 tests pass).
+   - `scripts/check-ntfy.py`: validated live connectivity to `127.0.0.1:8093`, confirmed token write-only enforcement, topic isolation, and anonymous denial without sending any test notification.
+   - `DEPLOYMENT.md`: updated topology table, port mappings, Tailscale Serve commands, and ntfy policy.
+
+## Deployment-input and existing ntfy intake — 2026-10-12
+
+Confirmed existing ntfy container named `ntfy` is running, version 2.28.0, publishing only a loopback port and using deny-all anonymous access. It uses its own `ntfy_default` network and existing persistent bind data. Docker inspection found no separate Job Finder ntfy container; the bundled Job Finder image was created for tests/preparation. No notification was published and the existing server, accounts, data and configuration were not changed. Owner explicitly selected reusing that existing server. Current Compose still hardcodes the bundled ntfy service/internal port/dependencies; external reuse is a required deployment integration change, not supported merely by editing deploy/.env.
+
+Found startup conflicts: current Compose's loopback port 8080 is used by qBittorrent and port 8081 by filebrowser. Do not stop either service. A project-local port/configuration adjustment is required before full startup. Secret metadata only (no content read): provider and notification publisher files remain empty placeholders; database/fetcher files are nonempty. Real AI/notification modes were not enabled. Existing-server publisher provisioning and private reachability remain necessary when implementing reuse.
+
+Validation: Compose JSON interpolation with the actual deployment file passes, with direct LAN-IP allowed origin, mock AI mode and disabled fetching asserted; file mode 0600 verified. Initial sandbox netlink inspection failed with Operation not permitted; authorized read-only host inspection succeeded. No dependency operation, API probe, firewall/host route change, Tailscale Serve setup, actual preflight invoking its privileged fallback, application implementation or commit occurred. `.agent` was not created without agreement.
+
+Next: implement existing-ntfy reuse consistently with ingress, publisher permissions and backup ownership; resolve loopback collisions without changing other apps; privately provision remaining credentials, then complete the outstanding deployed acceptance gates. The latest earlier record demonstrates synthetic semantic/integrated progress; it still explicitly leaves browser containment and final deployment acceptance unfinished.
+
 Historical private-registry endpoints in this document are anonymized as `packages.example.invalid`; this is not a working package source.
 
 Updated: 2026-10-10. Gates E & F passed live against OpenRouter (Luna & Jev). Controlled container isolation matrix fully verified with live listeners. Ledger: 46 attempts, US$0.004885158 known spend. Real fetching safely disabled.
