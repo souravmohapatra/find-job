@@ -2,6 +2,7 @@
 	admin off
 	skip_install_trust
 	auto_https disable_redirects
+	default_sni {$LAN_HOST}
 }
 
 (app) {
