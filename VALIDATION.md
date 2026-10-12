@@ -1,7 +1,26 @@
 # Validation
 
-## Shared ntfy reuse, permission isolation and port conflict verification — 2026-10-12
+## Direct LAN IP TLS access verification — 2026-10-12
 
+Baseline `05463b7`. Worktree clean before changes.
+
+### Actual checks run and outcomes:
+
+1. **Root Cause Analysis of Handshake Failure on Literal IP Access:**
+   - Probed `https://192.168.68.55:443` via `openssl s_client`:
+     - Without `-servername` parameter: failed with `SSL alert number 80: tlsv1 alert internal error` and `no peer certificate available`.
+     - With `-servername 192.168.68.55`: completed handshake immediately (`CN = Caddy Local Authority - ECC Intermediate`).
+   - Confirmed mechanism: standard browsers and TLS libraries do not send the Server Name Indication (SNI) extension when connecting to raw IP addresses (RFC 6066). Without SNI, Caddy lacked a fallback policy to select the certificate and rejected the handshake.
+
+2. **Fix Implemented and Verified in Container Image:**
+   - Configured `default_sni {$LAN_HOST}` in `deploy/Caddyfile` global options block.
+   - Rebuilt `jobfinder-edge:local` via `docker compose --env-file deploy/.env build edge` and recreated `jobfinder-edge-1`.
+   - Probed direct IP connection without SNI:
+     - `curl -k https://192.168.68.55:443`: completed TLSv1.3 handshake and returned `HTTP/2 200 OK` (Content-Type: `text/html; charset=utf-8`, serving Job Finder React SPA).
+     - `curl -k https://192.168.68.55:443/api/v1/health/live`: returned `HTTP/2 200 OK` `{"status":"ok"}`.
+     - `curl -k https://192.168.68.55:8443/v1/health`: returned `HTTP/2 200 OK` `{"healthy":true}`.
+
+## Shared ntfy reuse, permission isolation and port conflict verification — 2026-10-12
 Baseline `c3c0cd2`. Clean worktree before changes.
 
 ### Actual checks run and outcomes:

@@ -1,6 +1,21 @@
 # Progress and continuation
 
-Updated: 2026-10-12. Configured Job Finder to reuse existing host ntfy server (ntfy_default) with dedicated write-only credentials; resolved loopback port conflicts (8085/8086) without touching qBittorrent or filebrowser. Preflight and backups updated consistently.
+Updated: 2026-10-12. Fixed TLS handshake on direct IP access by configuring default_sni {$LAN_HOST} in Caddyfile; verified https://192.168.68.55:443 returns HTTP/2 200.
+
+## Direct LAN IP TLS access fix checkpoint — 2026-10-12 (completed)
+
+1. **Diagnosed root cause of invalid response on `https://192.168.68.55:443`:**
+   - Per RFC 6066, standard web browsers and TLS clients do not send the Server Name Indication (SNI) extension when connecting to literal IP addresses.
+   - Without an SNI extension, Caddy was unable to select the certificate generated for `192.168.68.55` and aborted the TLS handshake with `TLS alert: internal error (alert 80)` (`ERR_SSL_PROTOCOL_ERROR` in browsers).
+
+2. **Applied fix in `deploy/Caddyfile`:**
+   - Added `default_sni {$LAN_HOST}` to the Caddyfile global options block so Caddy serves the local certificate when clients connect by IP address without an SNI extension.
+   - Rebuilt `jobfinder-edge:local` and recreated `jobfinder-edge-1`.
+
+3. **Verified access:**
+   - Direct IP connection `https://192.168.68.55:443` without SNI now completes TLS handshake and returns `HTTP/2 200 OK` serving the Job Finder web app.
+   - Backend API endpoint `https://192.168.68.55:443/api/v1/health/live` returns `HTTP/2 200 OK {"status":"ok"}`.
+   - Notifications proxy `https://192.168.68.55:8443/v1/health` returns `HTTP/2 200 OK {"healthy":true}`.
 
 ## Shared ntfy reuse and port conflict resolution checkpoint — 2026-10-12 (completed)
 
